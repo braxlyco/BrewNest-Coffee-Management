@@ -1,0 +1,7 @@
+@page "/catalog"
+@attribute [Authorize]
+@inject IdentitySessionState Session
+<PageTitle>Catalog · BrewNest</PageTitle>
+<section class="identity-heading"><div><span class="kicker">MASTER DATA</span><h1>Catalog</h1><p>Authoritative items, business partners, service resources, recipes, and quality criteria.</p></div></section>
+<div class="identity-grid">@if(Has(CatalogPermissionNames.MasterDataRead)){<a class="identity-action-card" href="catalog/items"><strong>Items & units</strong><span>Menu, raw, packaging, groups, and units</span></a><a class="identity-action-card" href="catalog/parties"><strong>Customers & vendors</strong><span>Business-partner master data</span></a><a class="identity-action-card" href="catalog/resources"><strong>Service resources</strong><span>Dining tables, warehouses, and riders</span></a>}@if(Has(CatalogPermissionNames.RecipesRead)){<a class="identity-action-card" href="catalog/recipes"><strong>Recipes / BOMs</strong><span>Menu yields and material quantities</span></a>}@if(Has(CatalogPermissionNames.QualityRead)){<a class="identity-action-card" href="catalog/quality"><strong>Quality configuration</strong><span>Item/group inspection requirements and criteria</span></a>}</div>
+@code{private bool Has(string p)=>Session.CurrentUser?.Permissions.Contains(p,StringComparer.Ordinal)==true;}

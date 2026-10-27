@@ -1,0 +1,53 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    @switch (Name)
+    {
+        case "cup":
+            <path d="M4 9h13v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V9ZM17 10h2a3 3 0 0 1 0 6h-2M3 22h16M7 3v3M11 2v4M15 3v3" />
+            break;
+        case "home":
+            <path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" />
+            break;
+        case "search":
+            <circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" />
+            break;
+        case "receipt":
+            <path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3ZM8 7h8M8 11h8M8 15h4" />
+            break;
+        case "box":
+            <path d="m3 7 9-4 9 4v10l-9 4-9-4V7Zm0 0 9 4 9-4M12 11v10M7 5l10 4" />
+            break;
+        case "users":
+            <circle cx="9" cy="8" r="3" /><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 5" />
+            break;
+        case "book":
+            <path d="M12 5v16M3 3l9 2 9-2v16l-9 2-9-2V3ZM6 8l3 1M15 9l3-1M6 12l3 1M15 13l3-1" />
+            break;
+        case "bag":
+            <path d="M4 8h16l1 13H3L4 8ZM8 8V6a4 4 0 0 1 8 0v2" />
+            break;
+        case "layers":
+            <path d="m3 7 9-4 9 4-9 4-9-4Zm0 5 9 4 9-4M3 17l9 4 9-4" />
+            break;
+        case "return":
+            <path d="m8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12h-4" />
+            break;
+        case "wallet":
+            <path d="M20 7H5a2 2 0 0 1 0-4h13v4M3 5v14a2 2 0 0 0 2 2h15V7M20 11h-6v6h6M17 14h.01" />
+            break;
+        case "truck":
+            <path d="M2 5h12v12H2V5ZM14 9h4l4 4v4h-8" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="19" r="2" />
+            break;
+        case "chart":
+            <path d="M3 3v18h18M7 16v-4M12 16V8M17 16V5" />
+            break;
+        case "settings":
+            <path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="3" fill="currentColor" /><circle cx="15" cy="17" r="3" fill="currentColor" />
+            break;
+        default:
+            <path d="M5 12h14m-5-5 5 5-5 5" />
+            break;
+    }
+</svg>
+@code {
+    [Parameter] public string Name { get; set; } = "arrow";
+}

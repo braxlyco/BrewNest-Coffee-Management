@@ -1,0 +1,9 @@
+using BrewNest.BuildingBlocks.Authorization;using BrewNest.BuildingBlocks.Modules;using BrewNest.Modules.Returns.Application.Interfaces;using BrewNest.Modules.Returns.Application.Services;using BrewNest.Modules.Returns.Domain.BusinessRules;using BrewNest.Modules.Returns.Endpoints;using BrewNest.Modules.Returns.Infrastructure.Persistence;using Microsoft.AspNetCore.Routing;using Microsoft.EntityFrameworkCore;using Microsoft.Extensions.Configuration;using Microsoft.Extensions.DependencyInjection;using Microsoft.Extensions.DependencyInjection.Extensions;
+
+namespace BrewNest.Modules.Returns.DependencyInjection;
+
+/// <summary>Defines the Returns module composition root.</summary>
+public sealed class ReturnsModule():BrewNestModule("Returns")
+{/// <inheritdoc />
+public override void RegisterServices(IServiceCollection services,IConfiguration configuration){var connection=configuration.GetConnectionString("BrewNestDatabase")??string.Empty;services.TryAddSingleton(TimeProvider.System);services.AddDbContext<ReturnsDbContext>(o=>o.UseSqlServer(connection,s=>{s.MigrationsAssembly(typeof(ReturnsDbContext).Assembly.FullName);s.MigrationsHistoryTable("__EFMigrationsHistory","returns");s.EnableRetryOnFailure();}));services.AddScoped<ReturnsService>();services.AddSingleton<IReturnsDocumentNumbers,ReturnsDocumentNumbers>();services.AddSingleton<IPermissionDefinitionProvider,ReturnsPermissionProvider>();services.AddAuthorization(o=>{foreach(var p in new[]{ReturnsPermissions.Read,ReturnsPermissions.Manage,ReturnsPermissions.Approve,ReturnsPermissions.Inspect,ReturnsPermissions.Voids,ReturnsPermissions.VoidsApprove,ReturnsPermissions.Refunds})o.AddPolicy(p,x=>x.RequireClaim("permission",p));});}/// <inheritdoc />
+public override void MapEndpoints(IEndpointRouteBuilder endpoints)=>endpoints.MapReturns();}

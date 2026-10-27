@@ -1,0 +1,85 @@
+@page "/returns/voids"
+@attribute [Authorize(Policy = ReturnsPermissionNames.Read)]
+@inject ReturnsApiClient Api
+@inject SalesApiClient SalesApi
+@inject IdentitySessionState Session
+
+<PageTitle>Voids | BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">REVERSALS</p><h1>Voids &amp; refund requests</h1><p>Payment state selects the configured approval route and refund amount.</p></section>
+@if (message is not null) { <div class="alert" role="status">@message</div> }
+<div class="workspace-grid">
+    @if (CanManage)
+    {
+        <section class="panel">
+            <h2>Request void</h2>
+            @if (ordersError is not null) { <p class="alert">@ordersError</p> }
+            <EditForm Model="form" OnValidSubmit="Create">
+                <DataAnnotationsValidator /><FormValidationSummary />
+                <label>Sales order
+                    <InputSelect @bind-Value="form.SalesOrderId">
+                        <option value="">Select an order</option>
+                        @foreach (var order in OrderChoices) { <option value="@order.Id">@order.OrderNumber · @order.Status · PKR @order.NetAmount.ToString("N2")</option> }
+                    </InputSelect>
+                </label>
+                <label>Reason <InputText @bind-Value="form.Reason" /></label>
+                <button class="primary-button" type="submit" disabled="@(busy || OrderChoices.Length == 0)">@(busy ? "Creating…" : "Create request")</button>
+            </EditForm>
+            @if (OrderChoices.Length == 0 && ordersError is null) { <p>No eligible Sales orders are available.</p> }
+        </section>
+    }
+    <section class="panel">
+        <h2>Void history</h2>
+        @if (values.Length == 0) { <p>No void requests yet.</p> }
+        @foreach (var request in values)
+        {
+            <article class="list-card">
+                <strong>@request.VoidNumber</strong><span class="status-pill">@request.Status</span>
+                <p>@request.OrderNumber · @(request.IsAfterPayment ? "After payment" : "Before payment") · PKR @request.Amount.ToString("N2")</p>
+                @if (CanApprove && request.Status == VoidStatus.PendingApproval) { <button type="button" disabled="@busy" @onclick="() => Approve(request)">Approve next step</button> }
+                @if (request.RefundReference is not null) { <small>Refund: @request.RefundReference</small> }
+            </article>
+        }
+    </section>
+</div>
+@code {
+    private VoidForm form = new();
+    private VoidResponse[] values = [];
+    private SalesOrderResponse[] orders = [];
+    private string? message;
+    private string? ordersError;
+    private bool busy;
+    private bool CanManage => Session.CurrentUser?.Permissions.Contains(ReturnsPermissionNames.Voids, StringComparer.Ordinal) == true;
+    private bool CanApprove => Session.CurrentUser?.Permissions.Contains(ReturnsPermissionNames.VoidsApprove, StringComparer.Ordinal) == true;
+    private SalesOrderResponse[] OrderChoices => orders
+        .Where(x => x.Status is not SalesOrderStatus.Cancelled &&
+            !values.Any(y => y.SalesOrderId == x.Id && y.Status is VoidStatus.PendingApproval or VoidStatus.Completed))
+        .ToArray();
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { values = await Api.Voids(); }
+        catch (Exception exception) { message = exception.Message; }
+        try { orders = await SalesApi.GetOrdersAsync(); ordersError = null; }
+        catch (Exception) { ordersError = "Order choices are unavailable. Sales order read access is required."; }
+    }
+    private async Task Create()
+    {
+        if (busy || !Guid.TryParse(form.SalesOrderId, out var id) || !OrderChoices.Any(x => x.Id == id))
+        {
+            message = "Select an eligible Sales order.";
+            return;
+        }
+        busy = true;
+        try { await Api.CreateVoid(new(id, form.Reason)); form = new(); await Load(); message = "Void request created."; }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+    private async Task Approve(VoidResponse request)
+    {
+        if (busy) return;
+        busy = true;
+        try { await Api.DecideVoid(request.Id, new(true, "Approved", request.Version)); await Load(); message = "Approval recorded."; }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+}

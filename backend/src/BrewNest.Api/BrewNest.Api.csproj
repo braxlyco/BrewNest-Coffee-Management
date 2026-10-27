@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>6436ce0f-6b47-430e-957f-6a7bf6d24a44</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BrewNest.BuildingBlocks\BrewNest.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\..\shared\BrewNest.Contracts\BrewNest.Contracts.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Administration\BrewNest.Modules.Administration.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Catalog\BrewNest.Modules.Catalog.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Delivery\BrewNest.Modules.Delivery.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Finance\BrewNest.Modules.Finance.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Identity\BrewNest.Modules.Identity.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Inventory\BrewNest.Modules.Inventory.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Kitchen\BrewNest.Modules.Kitchen.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Payments\BrewNest.Modules.Payments.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Procurement\BrewNest.Modules.Procurement.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Production\BrewNest.Modules.Production.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Reporting\BrewNest.Modules.Reporting.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Returns\BrewNest.Modules.Returns.csproj" />
+    <ProjectReference Include="..\Modules\BrewNest.Modules.Sales\BrewNest.Modules.Sales.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csproj,props,targets}]
+indent_style = space
+indent_size = 4
+
+[*.cs]
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_new_line_before_open_brace = all
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_prefer_primary_constructors = true:suggestion
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_readonly_field = true:warning
+dotnet_diagnostic.IDE0005.severity = warning
+
+[**/Migrations/*.cs]
+generated_code = true
+
+[*.{razor,html,css,json,md,yml,yaml}]
+indent_style = space
+indent_size = 2

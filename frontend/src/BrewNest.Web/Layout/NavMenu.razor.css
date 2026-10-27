@@ -1,0 +1,12 @@
+.brand-row{min-height:100px;padding:24px;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:12px;color:#fff5e8;text-decoration:none}
+.brand-mark{display:grid;place-items:center;width:43px;height:43px;background:#d6a56b;color:#30291f;border-radius:14px}
+.brand strong{display:block;font-size:25px;letter-spacing:-1px}.brand-period{color:#d6a56b}.brand small{display:block;color:#b9b2a1;font-size:9px;letter-spacing:2px;margin-top:3px}
+.navigation{height:calc(100dvh - 100px);padding:0 15px 20px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#625b4a transparent}
+.nav-heading{color:#a9a38f;font-size:9px;letter-spacing:1.7px;font-weight:700;margin:23px 14px 9px}
+nav ::deep .nav-link{display:flex;align-items:center;gap:12px;min-height:43px;margin:3px 0;padding:10px 14px;border-radius:10px;color:#d2cebf;font-size:13px;transition:background .18s,color .18s;white-space:nowrap}
+nav ::deep .nav-link svg{width:19px;height:19px;flex-shrink:0;opacity:.8}nav ::deep .nav-link:hover{background:#ffffff0c;color:#fff}nav ::deep .nav-link.active{background:#d6a56b;color:#29291e;font-weight:700}nav ::deep .nav-link.active svg{opacity:1}
+nav ::deep .upcoming{color:#b3b1a4}nav small{margin-left:auto;font-size:9px;border:1px solid #ffffff21;border-radius:4px;padding:2px 5px}
+.sidebar-note{margin:24px 8px 0;padding:17px 8px;border-top:1px solid #ffffff16;display:flex;gap:9px;align-items:flex-start}.sidebar-note strong{font-size:11px;font-weight:500;color:#d7d0bf}.sidebar-note small{display:block;font-size:10px;color:#9f9e90;margin-top:4px}.note-dot{width:6px;height:6px;background:#d6a56b;border-radius:50%;margin-top:6px;flex-shrink:0}
+.menu-button{display:none;width:40px;height:40px;border:1px solid #ffffff30;background:transparent;border-radius:8px}.menu-button span{display:block;background:#f7edde;width:17px;height:2px;margin:4px auto}
+@media(max-width:860px){.brand-row{min-height:76px;padding:15px 20px}.menu-button{display:block}.navigation{height:auto;max-height:70dvh;padding-bottom:16px}.navigation.collapsed{display:none}.sidebar-note{display:none}}

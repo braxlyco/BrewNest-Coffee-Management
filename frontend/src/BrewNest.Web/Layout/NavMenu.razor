@@ -1,0 +1,20 @@
+<div class="brand-row"><a class="brand" href="" aria-label="BrewNest home"><span class="brand-mark"><CafeIcon Name="cup" /></span><span><strong>BrewNest<span class="brand-period">.</span></strong><small>CAFÉ MANAGEMENT</small></span></a><button class="menu-button" type="button" aria-label="Toggle navigation" aria-expanded="@(!collapsed)" aria-controls="workspace-navigation" @onclick="() => collapsed = !collapsed"><span></span><span></span><span></span></button></div>
+<div id="workspace-navigation" class="navigation @(collapsed ? "collapsed" : "")">
+    <nav aria-label="Workspaces">
+        <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="Close"><CafeIcon Name="home" /><span>Overview</span></NavLink>
+        <p class="nav-heading">RUN YOUR CAFÉ</p>
+        @foreach(var module in WorkspaceDirectory.All.Where(x => x.Category is "Service" or "Operations"))
+        {<NavLink class="nav-link" href="@module.Url" @onclick="Close"><CafeIcon Name="@module.Icon" /><span>@module.Name</span></NavLink>}
+        <p class="nav-heading">MANAGE & GROW</p>
+        @foreach(var module in WorkspaceDirectory.All.Where(x => x.Category == "Management"))
+        {<NavLink class="nav-link" href="@module.Url" @onclick="Close"><CafeIcon Name="@module.Icon" /><span>@module.Name</span></NavLink>}
+        <p class="nav-heading">ON THE HORIZON</p>
+        @foreach(var module in WorkspaceDirectory.All.Where(x => !x.Available))
+        {<NavLink class="nav-link upcoming" href="@module.Url" @onclick="Close"><CafeIcon Name="@module.Icon" /><span>@module.Name</span><small>Soon</small></NavLink>}
+    </nav>
+    <div class="sidebar-note"><span class="note-dot"></span><div><strong>A little care in every cup.</strong><small>Welcome to your daily workspace.</small></div></div>
+</div>
+@code {
+    private bool collapsed = true;
+    private void Close() => collapsed = true;
+}

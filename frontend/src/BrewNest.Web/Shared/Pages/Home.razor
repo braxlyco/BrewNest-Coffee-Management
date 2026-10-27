@@ -1,0 +1,35 @@
+@page "/"
+<PageTitle>Your café workspace · BrewNest</PageTitle>
+
+<div class="welcome-heading"><div><span class="kicker">YOUR DAILY BLEND</span><h1>A good day starts here.</h1><p>Everything you need to keep your café running beautifully.</p></div><span class="date-note">Your café. Your rhythm.</span></div>
+<section class="cafe-hero">
+    <div class="hero-copy"><span class="hero-label"><span></span> BREWNEST CAFÉ WORKSPACE</span><h2>Less juggling.<br />More brewing.</h2><p>From the first order to the last cup, give every part of your café a little more care.</p><div class="hero-actions"><a class="button-light" href="sales/orders">Open sales <CafeIcon /></a><a class="hero-secondary" href="kitchen/queue">View kitchen queue <span aria-hidden="true">↗</span></a></div></div>
+    <div class="coffee-art" aria-hidden="true"><div class="coffee-orbit orbit-one"></div><div class="coffee-orbit orbit-two"></div><span class="bean bean-one"></span><span class="bean bean-two"></span><div class="saucer"><div class="cup-handle"></div><div class="coffee-cup"><div class="coffee-surface"><div class="latte-heart"></div><span class="latte-line"></span></div></div></div><span class="coffee-caption">Crafted with care. Served with heart.</span></div>
+</section>
+
+<div class="quick-actions" aria-label="Quick actions">
+    <a href="sales/orders"><span class="quick-icon"><CafeIcon Name="receipt" /></span><div><strong>Take an order</strong><small>Start with your guest</small></div><CafeIcon /></a>
+    <a href="catalog/items"><span class="quick-icon"><CafeIcon Name="book" /></span><div><strong>Explore the menu</strong><small>Items, ingredients & units</small></div><CafeIcon /></a>
+    <a href="inventory/expiry"><span class="quick-icon"><CafeIcon Name="box" /></span><div><strong>Check freshness</strong><small>Review stock expiry</small></div><CafeIcon /></a>
+</div>
+
+<section aria-labelledby="modules-heading" class="workspace-section">
+    <div class="section-heading"><div><span class="kicker">A PLACE FOR EVERYTHING</span><h2 id="modules-heading">Your workspaces</h2></div><label class="workspace-search"><CafeIcon Name="search" /><input aria-label="Search workspaces" placeholder="Find a workspace…" @bind="search" @bind:event="oninput" /></label></div>
+    <div class="workspace-filters" aria-label="Filter workspaces">@foreach (var category in Categories){<button type="button" class="@(filter == category ? "selected" : "")" aria-pressed="@(filter == category)" @onclick="() => filter = category">@category</button>}<span class="result-count" role="status">@Filtered.Count() workspaces</span></div>
+    <div class="module-grid">
+        @foreach (var module in Filtered)
+        {
+            <a class="module-card @(module.Available ? "" : "planned")" href="@module.Url"><span class="module-code"><CafeIcon Name="@module.Icon" /></span><div><span class="module-category">@module.Category</span><strong>@module.Name</strong><small>@module.Description</small></div><span class="module-arrow" aria-hidden="true">↗</span></a>
+        }
+    </div>
+    @if (!Filtered.Any()) { <div class="empty-state"><CafeIcon Name="search" /><h3>No workspace found</h3><p>Try “stock”, “Sales” or a different category.</p><button @onclick="Reset">Clear filters</button></div> }
+</section>
+<footer class="overview-footer"><span><CafeIcon Name="cup" /> Made for the everyday café.</span><span>BrewNest · Café management</span></footer>
+
+@code {
+    private string search = string.Empty;
+    private string filter = "All";
+    private static readonly string[] Categories = ["All", "Service", "Operations", "Management", "Coming soon"];
+    private IEnumerable<Workspace> Filtered => WorkspaceDirectory.All.Where(x => (filter == "All" || x.Category == filter) && $"{x.Name} {x.Description}".Contains(search, StringComparison.OrdinalIgnoreCase));
+    private void Reset() { search = string.Empty; filter = "All"; }
+}

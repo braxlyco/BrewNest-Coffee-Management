@@ -1,0 +1,33 @@
+@page "/identity/login"
+@inject IdentitySessionState Session
+@inject NavigationManager Navigation
+<PageTitle>Welcome back · BrewNest</PageTitle>
+
+<section class="login-experience">
+    <div class="login-story"><span class="hero-label">THE HEART OF YOUR CAFÉ</span><h1>Good coffee.<br />Great company.<br /><em>One workspace.</em></h1><p>A little less admin. A little more time for the people on the other side of the counter.</p><div class="login-cup" aria-hidden="true"><CafeIcon Name="cup" /></div><span class="login-story-footer">BREWNEST &nbsp; / &nbsp; CRAFTED FOR CAFÉ LIFE</span></div>
+    <div class="login-form-panel"><span class="kicker">MAKE YOURSELF AT HOME</span><h2>Welcome back.</h2><p class="muted">Sign in to your café workspace.</p>
+        @if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="identity-message error" role="alert">@errorMessage</div> }
+        <EditForm Model="model" OnValidSubmit="SignInAsync"><DataAnnotationsValidator /><FormValidationSummary />
+            <div class="identity-form-stack"><div><label for="login-email">Email address</label><InputText id="login-email" class="form-control" type="email" @bind-Value="model.Email" autocomplete="username" placeholder="you@example.com" disabled="@isBusy" /></div><div><label for="login-password">Password</label><div class="password-input"><InputText id="login-password" class="form-control" type="@(showPassword ? "text" : "password")" @bind-Value="model.Password" autocomplete="current-password" disabled="@isBusy" /><button type="button" @onclick="() => showPassword = !showPassword" aria-label="@(showPassword ? "Hide password" : "Show password")" aria-pressed="@showPassword">@(showPassword ? "Hide" : "Show")</button></div></div><button class="identity-primary-button login-submit" type="submit" disabled="@isBusy">@(isBusy ? "Signing in…" : "Sign in to BrewNest") <span aria-hidden="true">→</span></button></div>
+        </EditForm><p class="login-help">Need an account or password reset?<br />Your café administrator can help.</p><a class="back-link" href="">← Back to overview</a>
+    </div>
+</section>
+
+@code {
+    private readonly LoginFormModel model = new();
+    private bool isBusy;
+    private bool showPassword;
+    private string? errorMessage;
+    private async Task SignInAsync()
+    {
+        if (isBusy) return;
+        isBusy = true;
+        errorMessage = null;
+        try { await Session.LoginAsync(model.Email, model.Password); Navigation.NavigateTo(""); }
+        catch (IdentityApiException exception) { errorMessage = exception.Message; }
+        catch (HttpRequestException) { errorMessage = "The café server is unavailable. Please check your connection and retry."; }
+        catch (TaskCanceledException) { errorMessage = "Sign in took too long. Please try again."; }
+        catch (Exception) { errorMessage = "We couldn’t sign you in. Please reload this page and try again."; }
+        finally { isBusy = false; }
+    }
+}

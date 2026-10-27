@@ -1,0 +1,16 @@
+@BrewNest.Api_HostAddress = https://localhost:7241
+
+GET {{BrewNest.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{BrewNest.Api_HostAddress}}/api/modules
+Accept: application/json
+
+###
+
+GET {{BrewNest.Api_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+###

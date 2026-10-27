@@ -1,0 +1,37 @@
+@page "/procurement/orders"
+@attribute [Authorize(Policy=ProcurementPermissionNames.Read)]
+@inject ProcurementApiClient Api
+@inject IdentitySessionState Session
+
+<PageTitle>Purchase orders · BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">PROCUREMENT</p><h1>Purchase orders</h1><p>Approval steps follow the value-based rules configured in Administration.</p></section>
+@if (message is not null) { <div class="identity-message @(error ? "error" : "success")" role="alert">@message</div> }
+<section class="panel">
+    @foreach (var order in orders)
+    {
+        <article class="list-card"><strong>@order.Number</strong><span class="status-pill">@order.Status</span><p>@order.VendorName · PKR @order.Total.ToString("N2")</p>
+            @foreach (var step in order.Approvals.OrderBy(x => x.Sequence)) { <small>@step.Sequence. @step.RequiredRole — @step.Decision @(step.DecidedBy is null ? "" : $"by {step.DecidedBy}")</small><br/> }
+            @if (CanApprove && order.Status == PurchaseOrderStatus.PendingApproval) { <button class="primary-button" disabled="@busy" @onclick="() => Decide(order, true)">Approve next step</button><button disabled="@busy" @onclick="() => Decide(order, false)">Reject</button> }
+        </article>
+    }
+    @if (orders.Length == 0) { <p>No purchase orders yet. Select a vendor quotation first.</p> }
+</section>
+
+@code {
+    private PurchaseOrderResponse[] orders = [];
+    private string? message;
+    private bool error;
+    private bool busy;
+    private bool CanApprove => Session.CurrentUser?.Permissions.Contains(ProcurementPermissionNames.OrdersApprove, StringComparer.Ordinal) == true;
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load() { try { orders = await Api.Orders(); } catch (Exception ex) { Show(ex.Message, true); } }
+    private async Task Decide(PurchaseOrderResponse order, bool approve)
+    {
+        if (busy) return; busy = true;
+        try { await Api.Decide(order.Id, approve, new(approve ? "Approved after review." : "Rejected after review.", order.Version)); await Load(); Show(approve ? "Approval step recorded." : "Purchase order rejected.", false); }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private void Show(string value, bool failed) { message = value; error = failed; }
+}

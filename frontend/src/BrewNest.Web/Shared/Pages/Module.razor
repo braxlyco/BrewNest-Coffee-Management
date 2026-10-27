@@ -1,0 +1,9 @@
+@page "/module/{ModuleName}"
+@inject NavigationManager Navigation
+<PageTitle>@(Workspace?.Name ?? "Workspace") · BrewNest</PageTitle>
+<section class="placeholder-panel coming-soon"><span class="module-code"><CafeIcon Name="@(Workspace?.Icon ?? "cup")" /></span><span class="kicker">@(Workspace is null ? "WORKSPACE NOT FOUND" : "ON THE HORIZON")</span><h1>@(Workspace?.Name ?? "Let’s find your workspace.")</h1><p>@(Workspace is null ? "This workspace doesn’t exist. Return to the overview to find what you need." : Workspace.Description)</p>@if(Workspace is not null){<p class="muted">This module is planned for a future phase. Its operational screens are not available yet.</p>}<a class="identity-primary-button" href="">Back to overview →</a></section>
+@code {
+    [Parameter] public string ModuleName { get; set; } = string.Empty;
+    private Workspace? Workspace => WorkspaceDirectory.All.FirstOrDefault(x => x.Slug.Equals(ModuleName, StringComparison.OrdinalIgnoreCase));
+    protected override void OnParametersSet() { if (Workspace?.Available == true) Navigation.NavigateTo(Workspace.Url, replace: true); }
+}

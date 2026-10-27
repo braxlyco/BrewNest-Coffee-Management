@@ -1,0 +1,167 @@
+@page "/identity/users"
+@attribute [Authorize(Policy = IdentityPermissionNames.UsersRead)]
+@inject IdentityApiClient ApiClient
+@inject IdentitySessionState Session
+
+<PageTitle>Users · BrewNest</PageTitle>
+
+<section class="identity-heading">
+    <div><span class="kicker">IDENTITY ADMINISTRATION</span><h1>Users</h1><p>Create accounts, control activation, assign roles, and reset passwords.</p></div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="identity-message @(hasError ? "error" : "success")">@message</div>
+}
+
+@if (CanManage)
+{
+    <section class="identity-panel identity-create-panel">
+        <h2>Create user</h2>
+        <EditForm Model="createModel" OnValidSubmit="CreateUserAsync">
+            <DataAnnotationsValidator />
+            <FormValidationSummary />
+            <div class="identity-form-grid">
+                <div><label>Full name</label><InputText class="form-control" @bind-Value="createModel.FullName" /></div>
+                <div><label>Email</label><InputText class="form-control" @bind-Value="createModel.Email" /></div>
+                <div><label>Initial password</label><InputText class="form-control" type="password" autocomplete="new-password" @bind-Value="createModel.Password" /><small>@IdentityPasswordRules.Guidance</small></div>
+            </div>
+            <button class="identity-primary-button" type="submit">Create user</button>
+        </EditForm>
+    </section>
+}
+
+<section class="identity-panel">
+    <div class="identity-table-wrap">
+        <table class="identity-table">
+            <thead><tr><th>User</th><th>Status</th><th>Roles</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var user in users)
+                {
+                    <tr>
+                        <td><strong>@user.FullName</strong><small>@user.Email</small></td>
+                        <td><span class="identity-status @(user.IsActive ? "active" : "inactive")">@(user.IsActive ? "Active" : "Disabled")</span></td>
+                        <td>@string.Join(", ", user.Roles)</td>
+                        <td><button class="identity-link-button" type="button" @onclick="() => SelectUser(user)">Manage</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (selectedUser is not null && CanManage)
+{
+    <section class="identity-panel identity-drawer">
+        <div><h2>@selectedUser.FullName</h2><p>@selectedUser.Email</p></div>
+        <div class="identity-chip-list">
+            @foreach (var role in roles)
+            {
+                <label class="identity-check"><input type="checkbox" checked="@selectedRoleNames.Contains(role.Name)" @onchange="eventArgs => ToggleRole(role.Name, eventArgs)" /> @role.Name</label>
+            }
+        </div>
+        <div class="identity-button-row">
+            <button class="identity-primary-button" type="button" @onclick="SaveRolesAsync">Save roles</button>
+            <button class="identity-secondary-button" type="button" @onclick="ToggleStatusAsync">@(selectedUser.IsActive ? "Disable user" : "Enable user")</button>
+        </div>
+        <div class="identity-inline-form">
+            <InputText class="form-control" type="password" autocomplete="new-password" placeholder="New password (12+ characters)" @bind-Value="resetPassword" />
+            <button class="identity-secondary-button" type="button" @onclick="ResetPasswordAsync">Reset password</button>
+        </div>
+    </section>
+}
+
+@code {
+    private readonly CreateUserFormModel createModel = new();
+    private UserSummaryResponse[] users = [];
+    private RoleResponse[] roles = [];
+    private UserSummaryResponse? selectedUser;
+    private HashSet<string> selectedRoleNames = new(StringComparer.OrdinalIgnoreCase);
+    private string resetPassword = string.Empty;
+    private string? message;
+    private bool hasError;
+    private bool CanManage => Session.CurrentUser?.Permissions.Contains(IdentityPermissionNames.UsersManage, StringComparer.Ordinal) == true;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            users = await ApiClient.GetUsersAsync();
+            if (CanManage)
+            {
+                roles = await ApiClient.GetRolesAsync();
+            }
+        }
+        catch (IdentityApiException exception)
+        {
+            ShowError(exception.Message);
+        }
+    }
+
+    private async Task CreateUserAsync()
+    {
+        try
+        {
+            await ApiClient.CreateUserAsync(new CreateUserRequest(createModel.Email, createModel.FullName, createModel.Password, []));
+            createModel.Email = createModel.FullName = createModel.Password = string.Empty;
+            ShowSuccess("User created.");
+            await ReloadAsync();
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private void SelectUser(UserSummaryResponse user)
+    {
+        selectedUser = user;
+        selectedRoleNames = user.Roles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        resetPassword = string.Empty;
+    }
+
+    private void ToggleRole(string roleName, ChangeEventArgs eventArgs)
+    {
+        if (eventArgs.Value is true) selectedRoleNames.Add(roleName); else selectedRoleNames.Remove(roleName);
+    }
+
+    private async Task SaveRolesAsync()
+    {
+        if (selectedUser is null) return;
+        try
+        {
+            await ApiClient.SetUserRolesAsync(selectedUser.Id, new SetUserRolesRequest(selectedRoleNames.ToArray()));
+            ShowSuccess("Role assignments updated. Existing refresh sessions were revoked.");
+            await ReloadAsync();
+            selectedUser = users.Single(user => user.Id == selectedUser.Id);
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private async Task ToggleStatusAsync()
+    {
+        if (selectedUser is null) return;
+        try
+        {
+            selectedUser = await ApiClient.UpdateUserAsync(selectedUser.Id, new UpdateUserRequest(selectedUser.Email, selectedUser.FullName, !selectedUser.IsActive, selectedUser.Version));
+            ShowSuccess(selectedUser.IsActive ? "User enabled." : "User disabled and refresh sessions revoked.");
+            await ReloadAsync();
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (selectedUser is null) return;
+        if (!IdentityPasswordRules.IsValid(resetPassword)) { ShowError(IdentityPasswordRules.Guidance); return; }
+        try
+        {
+            await ApiClient.ResetPasswordAsync(selectedUser.Id, new ResetPasswordRequest(resetPassword));
+            resetPassword = string.Empty;
+            ShowSuccess("Password reset. Existing refresh sessions were revoked.");
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private void ShowError(string text) { message = text; hasError = true; }
+    private void ShowSuccess(string text) { message = text; hasError = false; }
+}

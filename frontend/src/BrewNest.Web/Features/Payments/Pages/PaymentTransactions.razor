@@ -1,0 +1,134 @@
+@page "/payments/transactions"
+@attribute [Authorize(Policy = PaymentsPermissionNames.Read)]
+@inject PaymentsApiClient Api
+@inject SalesApiClient SalesApi
+@inject IdentitySessionState Session
+
+<PageTitle>Payment Transactions | BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">RECEIPTS</p><h1>Payment transactions</h1><p>Select a billed order, then record its payment. Wallet payments use sandbox adapters.</p></section>
+@if (message is not null) { <div class="alert" role="status">@message</div> }
+<div class="workspace-grid">
+    @if (CanCreate)
+    {
+        <section class="panel">
+            <h2>Record payment</h2>
+            @if (billChoicesError is not null) { <p class="alert">@billChoicesError</p> }
+            <EditForm Model="form" OnValidSubmit="Create">
+                <DataAnnotationsValidator />
+                <FormValidationSummary />
+                <div class="form-grid">
+                    <label>Billed order
+                        <InputSelect @bind-Value="form.SalesOrderId">
+                            <option value="">Select an order and bill</option>
+                            @foreach (var order in BillChoices) { <option value="@order.Id">@order.OrderNumber · @order.Bill!.BillNumber · PKR @order.Bill.NetAmount.ToString("N2")</option> }
+                        </InputSelect>
+                    </label>
+                    <label>Amount (PKR) <InputNumber @bind-Value="form.Amount" step="0.01" min="0.01" /></label>
+                    <label>Method
+                        <InputSelect @bind-Value="form.Method">
+                            @foreach (var method in Enum.GetValues<PaymentMethod>()) { <option value="@method">@method</option> }
+                        </InputSelect>
+                    </label>
+                    <label>Payer/reference <InputText @bind-Value="form.PayerReference" /></label>
+                    <label>Notes <InputText @bind-Value="form.Notes" /></label>
+                </div>
+                @if (SelectedBill is not null) { <p>Remaining balance: <strong>PKR @Remaining.ToString("N2")</strong></p> }
+                <p class="field-help">Bank transfer and COD require a reference. Wallet methods require a phone with country code, such as +923001234567. Wallet charges are simulated; use +999000000000 to test a declined wallet charge in Development.</p>
+                <button class="primary-button" type="submit" disabled="@(busy || SelectedBill is null || Remaining <= 0)">@(busy ? "Recording…" : "Record payment")</button>
+            </EditForm>
+            @if (BillChoices.Length == 0 && billChoicesError is null) { <p>No eligible billed orders. Issue a bill in Sales first.</p> }
+        </section>
+    }
+    <section class="panel">
+        <h2>Transactions</h2>
+        @if (values.Length == 0) { <p>No payments recorded yet.</p> }
+        @foreach (var payment in values)
+        {
+            <article class="list-card">
+                <strong>@payment.PaymentNumber</strong><span class="status-pill">@payment.Status</span>
+                <p>@payment.Method · @payment.BillNumber · PKR @payment.Amount.ToString("N2")</p>
+                @if (CanVerify && payment.Status == PaymentStatus.PendingVerification)
+                {
+                    <button type="button" disabled="@busy" @onclick="() => Verify(payment, true)">Verify</button>
+                    <button type="button" disabled="@busy" @onclick="() => Verify(payment, false)">Reject</button>
+                }
+                @if (CanSettle && payment.Status == PaymentStatus.Verified) { <button type="button" disabled="@busy" @onclick="() => SelectSettlement(payment)">Settle</button> }
+                @if (payment.GatewayReference is not null) { <small>@payment.GatewayReference</small> }
+            </article>
+        }
+    </section>
+</div>
+@if (CanSettle && selected is not null)
+{
+    <section class="panel">
+        <h2>Settle @selected.PaymentNumber</h2>
+        <EditForm Model="settlement" OnValidSubmit="Settle">
+            <DataAnnotationsValidator /><FormValidationSummary />
+            <label>Settlement reference <InputText @bind-Value="settlement.Reference" /></label>
+            <label>Remarks <InputText @bind-Value="settlement.Remarks" /></label>
+            <button class="primary-button" disabled="@busy">@(busy ? "Settling…" : "Confirm settlement")</button>
+            <button type="button" @onclick="() => selected = null">Cancel</button>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private PaymentForm form = new();
+    private readonly SettlementForm settlement = new();
+    private PaymentResponse[] values = [];
+    private SalesOrderResponse[] orders = [];
+    private PaymentResponse? selected;
+    private string? message;
+    private string? billChoicesError;
+    private bool busy;
+    private bool Has(string permission) => Session.CurrentUser?.Permissions.Contains(permission, StringComparer.Ordinal) == true;
+    private bool CanCreate => Has(PaymentsPermissionNames.Create);
+    private bool CanVerify => Has(PaymentsPermissionNames.Verify);
+    private bool CanSettle => Has(PaymentsPermissionNames.Settle);
+    private SalesOrderResponse[] BillChoices => orders.Where(x => x.Bill is not null && x.Status is SalesOrderStatus.Billed or SalesOrderStatus.Closed).ToArray();
+    private SalesOrderResponse? SelectedBill => BillChoices.FirstOrDefault(x => x.Id.ToString() == form.SalesOrderId);
+    private decimal Remaining => SelectedBill is null ? 0 : SelectedBill.Bill!.NetAmount - values
+        .Where(x => x.SalesOrderId == SelectedBill.Id && x.Status is not PaymentStatus.Failed and not PaymentStatus.Cancelled)
+        .Sum(x => x.Amount);
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { values = await Api.Payments(); }
+        catch (Exception exception) { message = exception.Message; }
+        try { orders = await SalesApi.GetOrdersAsync(); billChoicesError = null; }
+        catch (Exception) { billChoicesError = "Bill choices are unavailable. Sign in with Sales order read access and retry."; }
+    }
+    private async Task Create()
+    {
+        if (busy || SelectedBill?.Bill is null) return;
+        if (form.Amount > Remaining) { message = "The amount exceeds the remaining bill balance."; return; }
+        busy = true;
+        try
+        {
+            await Api.Create(new(SelectedBill.Id, SelectedBill.Bill.BillNumber, form.Amount, form.Method, form.PayerReference, form.Notes));
+            form = new();
+            await Load();
+            message = "Payment recorded.";
+        }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+    private async Task Verify(PaymentResponse payment, bool approve)
+    {
+        if (busy) return;
+        busy = true;
+        try { await Api.Verify(payment.Id, new(approve, approve ? "Receipt verified" : "Receipt rejected", payment.Version)); await Load(); message = approve ? "Payment verified." : "Payment rejected."; }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+    private void SelectSettlement(PaymentResponse payment) => selected = payment;
+    private async Task Settle()
+    {
+        if (busy || selected is null) return;
+        busy = true;
+        try { await Api.Settle(selected.Id, new(settlement.Reference, settlement.Remarks, selected.Version)); selected = null; await Load(); message = "Payment settled."; }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+}

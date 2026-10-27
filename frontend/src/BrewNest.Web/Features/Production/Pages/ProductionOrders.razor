@@ -1,0 +1,9 @@
+@page "/production/orders"
+@attribute [Authorize(Policy=ProductionPermissionNames.Read)]
+@inject ProductionApiClient Api
+@inject NavigationManager Navigation
+<PageTitle>Production orders · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">EXECUTION</span><h1>Production orders</h1><p>Calculated material requirements, issue state, completion, and variance.</p></section>
+@if(message is not null){<div class="identity-message error">@message</div>}
+<section class="identity-panel"><div class="identity-table-wrap"><table class="identity-table"><thead><tr><th>Order</th><th>Menu item</th><th>Quantity</th><th>Status</th><th>Requirements</th></tr></thead><tbody>@foreach(var order in orders){<tr style="cursor:pointer" @onclick="()=>Open(order.Id)"><td>@order.OrderNumber</td><td>@ItemName(order.MenuItemId)</td><td>@order.PlannedQuantity.ToString("0.###")</td><td><span class="identity-status">@order.Status</span></td><td>@order.Requirements.Length</td></tr>}</tbody></table></div></section>
+@code { private ProductionOrderResponse[] orders=[];private ProductionCatalogItemReference[] itemNames=[];private string? message;protected override async Task OnInitializedAsync(){try{itemNames=await Api.GetItemNamesAsync();orders=await Api.GetOrdersAsync();}catch(ProductionApiException ex){message=ex.Message;}}private string ItemName(Guid id)=>itemNames.FirstOrDefault(x=>x.Id==id)?.Name??"Unavailable item";private void Open(Guid id)=>Navigation.NavigateTo($"production/orders/{id}"); }

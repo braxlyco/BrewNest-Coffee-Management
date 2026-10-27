@@ -1,0 +1,30 @@
+@page "/identity"
+@attribute [Authorize]
+@inject IdentitySessionState Session
+
+<PageTitle>Identity & Access · BrewNest</PageTitle>
+
+<section class="identity-heading">
+    <div>
+        <span class="kicker">SECURITY WORKSPACE</span>
+        <h1>Identity & Access</h1>
+        <p>Manage secure access without exposing credentials or persistence entities to the browser.</p>
+    </div>
+</section>
+
+<div class="identity-grid">
+    @if (HasPermission(IdentityPermissionNames.UsersRead))
+    {
+        <a class="identity-action-card" href="identity/users"><strong>Users</strong><span>Accounts, activation, roles and password resets</span></a>
+    }
+    @if (HasPermission(IdentityPermissionNames.RolesRead))
+    {
+        <a class="identity-action-card" href="identity/roles"><strong>Roles & permissions</strong><span>Role definitions and explicit grants</span></a>
+    }
+    <a class="identity-action-card" href="identity/profile"><strong>My security</strong><span>Review access and change your password</span></a>
+</div>
+
+@code {
+    private bool HasPermission(string permission) =>
+        Session.CurrentUser?.Permissions.Contains(permission, StringComparer.Ordinal) == true;
+}

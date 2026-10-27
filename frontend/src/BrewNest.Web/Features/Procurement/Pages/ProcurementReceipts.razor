@@ -1,0 +1,142 @@
+@page "/procurement/receipts"
+@attribute [Authorize(Policy=ProcurementPermissionNames.Read)]
+@inject ProcurementApiClient Api
+@inject IdentitySessionState Session
+
+<PageTitle>Goods receipts · BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">QUALITY & RECEIVING</p><h1>Goods receipts</h1><p>Receive against approved purchase orders. Items requiring inspection reach Inventory only after passing.</p></section>
+@if (message is not null) { <div class="identity-message @(error ? "error" : "success")" role="alert">@message</div> }
+@if (CanReceive)
+{
+    <section class="panel"><h2>Record goods receipt</h2><EditForm Model="receiptForm" OnValidSubmit="CreateReceipt"><DataAnnotationsValidator/><FormValidationSummary />
+        <div class="form-grid"><label>Approved purchase order<InputSelect @bind-Value="receiptForm.OrderId" @bind-Value:after="OrderChanged"><option value="">Select order</option>@foreach (var order in OpenOrders) { <option value="@order.Id">@order.Number · @order.VendorName</option> }</InputSelect></label>
+            <label>Item line<InputSelect @bind-Value="receiptForm.OrderLineId" @bind-Value:after="OrderLineChanged"><option value="">Select open line</option>@foreach (var line in OpenLines) { <option value="@line.Id">@ItemName(line.ItemId) · @Remaining(line).ToString("N3") open</option> }</InputSelect></label>
+            <label>Warehouse<InputSelect @bind-Value="receiptForm.WarehouseId"><option value="">Select active warehouse</option>@foreach (var warehouse in references?.Warehouses ?? []) { <option value="@warehouse.Id">@warehouse.Code · @warehouse.Name</option> }</InputSelect></label>
+            <label>Supplier reference<InputText @bind-Value="receiptForm.SupplierReference" maxlength="100"/></label><label>Lot / batch<InputText @bind-Value="receiptForm.LotNumber" maxlength="100"/></label>
+            <label>Quantity<InputNumber @bind-Value="receiptForm.Quantity" min="0.001" step="0.001"/></label><label>Manufacturing date<InputDate @bind-Value="receiptForm.ManufacturingDate"/></label><label>Expiry date<InputDate @bind-Value="receiptForm.ExpiryDate"/></label>
+        </div><button class="primary-button" disabled="@busy">@(busy ? "Posting…" : "Record receipt")</button>
+    </EditForm></section>
+}
+@if (CanInspect && inspectionForm is not null)
+{
+    <section class="panel"><h2>Inspect @ItemName(InspectionItemId)</h2><p>Record every configured criterion. Failed material will not enter unrestricted stock.</p>
+        <div class="form-grid"><label>Inspection remarks<input @bind="inspectionForm.Remarks" maxlength="500"/></label></div>
+        @foreach (var criterion in inspectionForm.Criteria)
+        {
+            <div class="form-grid"><strong>@criterion.Name @(criterion.IsMandatory ? "*" : "")</strong>
+                <label>Result<input @bind="criterion.Result" maxlength="200"/></label>
+                <label>Decision<select @bind="criterion.Passed"><option value="">Select decision</option><option value="true">Pass</option><option value="false">Fail</option></select></label>
+                <label>Remarks<input @bind="criterion.Remarks" maxlength="500"/></label><label>Supporting reference<input @bind="criterion.SupportingReference" maxlength="100"/></label>
+            </div>
+        }
+        <button class="primary-button" disabled="@busy" @onclick="SubmitInspection">Complete inspection</button><button disabled="@busy" @onclick="() => inspectionForm = null">Cancel</button>
+    </section>
+}
+@if (CanReturn)
+{
+    <section class="panel"><h2>Vendor return</h2><EditForm Model="returnForm" OnValidSubmit="ReturnToVendor"><DataAnnotationsValidator/><FormValidationSummary />
+        <div class="form-grid"><label>Accepted receipt<InputSelect @bind-Value="returnForm.ReceiptId" @bind-Value:after="ReturnReceiptChanged"><option value="">Select receipt</option>@foreach (var value in receipts.Where(x => x.Status == GoodsReceiptStatus.Accepted)) { <option value="@value.Id">@value.Number</option> }</InputSelect></label>
+            <label>Item lot<InputSelect @bind-Value="returnForm.LineId"><option value="">Select lot</option>@foreach (var line in ReturnLines) { <option value="@line.Id">@ItemName(line.ItemId) · @line.LotNumber · @((line.Quantity - line.ReturnedQuantity).ToString("N3")) returnable</option> }</InputSelect></label>
+            <label>Quantity<InputNumber @bind-Value="returnForm.Quantity" min="0.001" step="0.001"/></label><label>Reason<InputText @bind-Value="returnForm.Reason" maxlength="500"/></label>
+        </div><button class="primary-button" disabled="@busy">Record vendor return</button>
+    </EditForm></section>
+}
+<section class="panel"><h2>Receipt history</h2>
+    @foreach (var value in receipts)
+    {
+        <article class="list-card"><strong>@value.Number</strong><span class="status-pill">@value.Status</span><p>Supplier reference @value.SupplierReference · @value.Lines.Length lot line(s)</p>
+            @foreach (var line in value.Lines)
+            {
+                <div><small>@ItemName(line.ItemId) · @line.LotNumber · @line.Quantity.ToString("N3") · @line.Inspection</small>
+                    @if (CanInspect && value.Status == GoodsReceiptStatus.PendingInspection && line.Inspection == InspectionDecision.Pending) { <button disabled="@busy" @onclick="() => SelectInspection(value, line)">Inspect</button> }
+                </div>
+            }
+        </article>
+    }
+    @if (receipts.Length == 0) { <p>No receipts yet. Approve a purchase order first.</p> }
+</section>
+
+@code {
+    private ProcurementReferenceData? references;
+    private PurchaseOrderResponse[] orders = [];
+    private GoodsReceiptResponse[] receipts = [];
+    private ProcurementReceiptForm receiptForm = new();
+    private ProcurementInspectionForm? inspectionForm;
+    private ProcurementVendorReturnForm returnForm = new();
+    private string? message;
+    private bool error;
+    private bool busy;
+    private bool Has(string name) => Session.CurrentUser?.Permissions.Contains(name, StringComparer.Ordinal) == true;
+    private bool CanReceive => Has(ProcurementPermissionNames.ReceiptsManage);
+    private bool CanInspect => Has(ProcurementPermissionNames.InspectionsManage);
+    private bool CanReturn => Has(ProcurementPermissionNames.ReturnsManage);
+    private PurchaseOrderResponse[] OpenOrders => orders.Where(x => (x.Status is PurchaseOrderStatus.Approved or PurchaseOrderStatus.PartiallyReceived) && x.Lines.Any(y => Remaining(y) > 0)).ToArray();
+    private PurchaseOrderLineResponse[] OpenLines => orders.FirstOrDefault(x => x.Id == receiptForm.OrderId)?.Lines.Where(x => Remaining(x) > 0).ToArray() ?? [];
+    private ReceiptLineResponse[] ReturnLines => receipts.FirstOrDefault(x => x.Id == returnForm.ReceiptId)?.Lines.Where(x => x.Quantity > x.ReturnedQuantity).ToArray() ?? [];
+    private Guid InspectionItemId => receipts.FirstOrDefault(x => x.Id == inspectionForm?.ReceiptId)?.Lines.FirstOrDefault(x => x.Id == inspectionForm?.LineId)?.ItemId ?? Guid.Empty;
+    private static decimal Remaining(PurchaseOrderLineResponse line) => line.Quantity - line.ReceivedQuantity;
+    private string ItemName(Guid id) => references?.Items.FirstOrDefault(x => x.Id == id)?.Name ?? "Unavailable item";
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { references = await Api.References(); orders = await Api.Orders(); receipts = await Api.Receipts(); }
+        catch (Exception ex) { Show(ex.Message, true); }
+    }
+    private void OrderChanged() { receiptForm.OrderLineId = null; receiptForm.Quantity = 0; }
+    private void OrderLineChanged() { receiptForm.Quantity = OpenLines.FirstOrDefault(x => x.Id == receiptForm.OrderLineId) is { } line ? Remaining(line) : 0; }
+    private void ReturnReceiptChanged() { returnForm.LineId = null; }
+    private async Task CreateReceipt()
+    {
+        if (busy) return;
+        var line = OpenLines.FirstOrDefault(x => x.Id == receiptForm.OrderLineId);
+        if (receiptForm.OrderId is null || line is null || receiptForm.WarehouseId is null || references?.Warehouses.All(x => x.Id != receiptForm.WarehouseId) != false) { Show("Select an approved order, open item line, and active warehouse.", true); return; }
+        if (receiptForm.Quantity <= 0 || receiptForm.Quantity > Remaining(line)) { Show("Receipt quantity must be positive and no more than the open order quantity.", true); return; }
+        if (receiptForm.ManufacturingDate is not null && receiptForm.ExpiryDate is not null && receiptForm.ManufacturingDate > receiptForm.ExpiryDate) { Show("Manufacturing date cannot follow expiry date.", true); return; }
+        busy = true;
+        try
+        {
+            var result = await Api.CreateReceipt(receiptForm.OrderId.Value, new(receiptForm.SupplierReference,
+                [new(line.Id, receiptForm.WarehouseId.Value, receiptForm.LotNumber, receiptForm.ManufacturingDate, receiptForm.ExpiryDate, receiptForm.Quantity)]));
+            receiptForm = new(); await Load(); Show(result.Status == GoodsReceiptStatus.PendingInspection ? "Receipt recorded; inspection is required before stock entry." : "Receipt accepted and stock entered Inventory.", false);
+        }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private void SelectInspection(GoodsReceiptResponse receipt, ReceiptLineResponse line)
+    {
+        var item = references?.Items.FirstOrDefault(x => x.Id == line.ItemId);
+        inspectionForm = new()
+        {
+            ReceiptId = receipt.Id, LineId = line.Id, Version = receipt.Version,
+            Criteria = item?.Criteria.Select(x => new ProcurementCriterionForm { Id = x.Id, Name = x.Name, IsMandatory = x.IsMandatory }).ToList() ?? []
+        };
+    }
+    private async Task SubmitInspection()
+    {
+        if (busy || inspectionForm is null) return;
+        if (string.IsNullOrWhiteSpace(inspectionForm.Remarks)) { Show("Enter inspection remarks.", true); return; }
+        if (inspectionForm.Criteria.Any(x => x.IsMandatory && (x.Passed is null || string.IsNullOrWhiteSpace(x.Result)))) { Show("Record a result and pass/fail decision for every mandatory criterion.", true); return; }
+        busy = true;
+        try
+        {
+            var result = await Api.Inspect(inspectionForm.ReceiptId, inspectionForm.LineId,
+                new(inspectionForm.Remarks, inspectionForm.Criteria.Where(x => x.Passed is not null)
+                    .Select(x => new InspectionResultRequest(x.Id, x.Result, x.Passed!.Value, x.Remarks, x.SupportingReference)).ToArray(), inspectionForm.Version));
+            inspectionForm = null; await Load(); Show($"Inspection completed: {result.Status}.", false);
+        }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private async Task ReturnToVendor()
+    {
+        if (busy) return;
+        var line = ReturnLines.FirstOrDefault(x => x.Id == returnForm.LineId);
+        if (returnForm.ReceiptId is null || line is null || returnForm.Quantity > line.Quantity - line.ReturnedQuantity) { Show("Select an accepted receipt line and a quantity no greater than its unreturned balance.", true); return; }
+        busy = true;
+        try { await Api.Return(new(returnForm.ReceiptId.Value, returnForm.Reason, [new(line.Id, returnForm.Quantity)])); returnForm = new(); await Load(); Show("Vendor return recorded and stock removed.", false); }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private void Show(string value, bool failed) { message = value; error = failed; }
+}

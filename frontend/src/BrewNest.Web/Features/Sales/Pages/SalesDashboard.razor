@@ -1,0 +1,7 @@
+@page "/sales"
+@attribute [Authorize]
+@inject IdentitySessionState Session
+<PageTitle>Sales · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">ORDER TO BILL</span><h1>Sales</h1><p>Dine-in, takeaway, and delivery orders with controlled discounts, final bills, and full status history.</p></section>
+<div class="identity-grid">@if(Has(SalesPermissionNames.OrdersRead)){<a class="identity-action-card" href="sales/orders"><strong>Sales orders</strong><span>Create, amend, confirm, bill, and close orders</span></a>}@if(Has(SalesPermissionNames.DiscountsApprove)){<a class="identity-action-card" href="sales/discount-approvals"><strong>Discount approvals</strong><span>Manager approval queue</span></a>}</div>
+@code { private bool Has(string permission)=>Session.CurrentUser?.Permissions.Contains(permission,StringComparer.Ordinal)==true; }

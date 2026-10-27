@@ -1,0 +1,16 @@
+using BrewNest.Modules.Inventory.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+namespace BrewNest.Modules.Inventory.Infrastructure.EntityConfigurations;
+internal sealed class StockLotConfiguration:IEntityTypeConfiguration<StockLot>
+{
+    public void Configure(EntityTypeBuilder<StockLot> b){b.ToTable("StockLots",t=>{t.HasCheckConstraint("CK_StockLots_OnHand_Nonnegative","[OnHandQuantity] >= 0");t.HasCheckConstraint("CK_StockLots_Reserved_Nonnegative","[ReservedQuantity] >= 0");t.HasCheckConstraint("CK_StockLots_Reserved_NotOverOnHand","[ReservedQuantity] <= [OnHandQuantity]");t.HasCheckConstraint("CK_StockLots_Dates","[ManufacturingDate] IS NULL OR [ExpiryDate] IS NULL OR [ManufacturingDate] <= [ExpiryDate]");});b.HasKey(x=>x.Id);b.Property(x=>x.LotNumber).HasMaxLength(100).IsRequired();b.Property(x=>x.OnHandQuantity).HasPrecision(18,3);b.Property(x=>x.ReservedQuantity).HasPrecision(18,3);b.Property(x=>x.BlockReason).HasMaxLength(500);b.Property(x=>x.BlockedBy).HasMaxLength(100);b.Property(x=>x.CreatedBy).HasMaxLength(100).IsRequired();b.Property(x=>x.ModifiedBy).HasMaxLength(100);b.Property(x=>x.RowVersion).IsRowVersion();b.HasIndex(x=>new{x.ItemId,x.WarehouseId,x.LotNumber}).IsUnique();b.HasIndex(x=>x.ExpiryDate);}
+}
+internal sealed class StockReservationConfiguration:IEntityTypeConfiguration<StockReservation>
+{
+    public void Configure(EntityTypeBuilder<StockReservation> b){b.ToTable("Reservations",t=>{t.HasCheckConstraint("CK_Reservations_Quantity_Positive","[Quantity] > 0");t.HasCheckConstraint("CK_Reservations_Released_Nonnegative","[ReleasedQuantity] >= 0");t.HasCheckConstraint("CK_Reservations_Consumed_Nonnegative","[ConsumedQuantity] >= 0");t.HasCheckConstraint("CK_Reservations_Remaining","[ReleasedQuantity] + [ConsumedQuantity] <= [Quantity]");});b.HasKey(x=>x.Id);b.Property(x=>x.Quantity).HasPrecision(18,3);b.Property(x=>x.ReleasedQuantity).HasPrecision(18,3);b.Property(x=>x.ConsumedQuantity).HasPrecision(18,3);b.Property(x=>x.ReferenceType).HasMaxLength(80).IsRequired();b.Property(x=>x.ReferenceId).HasMaxLength(100).IsRequired();b.Property(x=>x.Status).HasConversion<string>().HasMaxLength(30);b.Property(x=>x.Remarks).HasMaxLength(500);b.Property(x=>x.CreatedBy).HasMaxLength(100).IsRequired();b.Property(x=>x.ModifiedBy).HasMaxLength(100);b.Property(x=>x.RowVersion).IsRowVersion();b.HasIndex(x=>new{x.ReferenceType,x.ReferenceId});b.HasIndex(x=>new{x.StockLotId,x.Status});b.HasOne(x=>x.StockLot).WithMany().HasForeignKey(x=>x.StockLotId).OnDelete(DeleteBehavior.Restrict);}
+}
+internal sealed class StockMovementConfiguration:IEntityTypeConfiguration<StockMovement>
+{
+    public void Configure(EntityTypeBuilder<StockMovement> b){b.ToTable("StockMovements");b.HasKey(x=>x.Id);b.Property(x=>x.MovementType).HasConversion<string>().HasMaxLength(40);b.Property(x=>x.Quantity).HasPrecision(18,3);b.Property(x=>x.OnHandAfter).HasPrecision(18,3);b.Property(x=>x.ReservedAfter).HasPrecision(18,3);b.Property(x=>x.ReferenceType).HasMaxLength(80);b.Property(x=>x.ReferenceNumber).HasMaxLength(100);b.Property(x=>x.Remarks).HasMaxLength(500);b.Property(x=>x.PerformedBy).HasMaxLength(100).IsRequired();b.HasIndex(x=>new{x.StockLotId,x.PerformedAt});b.HasIndex(x=>new{x.ItemId,x.WarehouseId,x.PerformedAt});}
+}

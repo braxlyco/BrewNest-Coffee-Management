@@ -1,0 +1,78 @@
+@page "/sales/orders"
+@attribute [Authorize(Policy=SalesPermissionNames.OrdersRead)]
+@inject SalesApiClient Api
+@inject IdentitySessionState Session
+@inject NavigationManager Navigation
+
+<PageTitle>Sales orders · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">SALES</span><h1>Sales orders</h1><p>Create dine-in, takeaway, and delivery orders, then send confirmed items to the kitchen.</p></section>
+@if (message is not null) { <div class="identity-message @(error ? "error" : "success")" role="alert">@message</div> }
+<section class="identity-panel"><div class="identity-table-wrap"><table class="identity-table"><thead><tr><th>Order</th><th>Type</th><th>Status</th><th>Customer</th><th>Gross</th><th>Discount</th><th>Net</th><th></th></tr></thead><tbody>
+    @foreach (var order in orders)
+    {
+        <tr><td><strong>@order.OrderNumber</strong><small>@order.CreatedAt.ToLocalTime().ToString("g")</small></td><td>@order.OrderType</td><td><span class="identity-status @(order.Status is SalesOrderStatus.Closed ? "active" : order.Status is SalesOrderStatus.Cancelled ? "inactive" : "")">@order.Status</span></td><td>@(string.IsNullOrWhiteSpace(order.CustomerName) ? "Walk-in" : order.CustomerName)</td><td>PKR @order.GrossAmount.ToString("N2")</td><td>PKR @order.DiscountAmount.ToString("N2")</td><td>PKR @order.NetAmount.ToString("N2")</td><td><a href="sales/orders/@order.Id" aria-label="Open @order.OrderNumber">Open</a></td></tr>
+    }
+</tbody></table></div>@if (orders.Length == 0) { <p>No orders yet. Create the first one below.</p> }</section>
+@if (CanManage)
+{
+    <section class="identity-panel"><h2>New order</h2>
+        <EditForm Model="form" OnValidSubmit="Create"><DataAnnotationsValidator/><FormValidationSummary />
+            <div class="identity-form-grid">
+                <label>Order type<InputSelect class="form-control" @bind-Value="form.OrderType"><option value="@SalesOrderType.DineIn">Dine-in</option><option value="@SalesOrderType.Takeaway">Takeaway</option><option value="@SalesOrderType.Delivery">Delivery</option></InputSelect></label>
+                <label>Customer<InputSelect class="form-control" @bind-Value="form.CustomerId" @bind-Value:after="CustomerChanged"><option value="">Walk-in / manual</option>@foreach (var customer in references.Customers) { <option value="@customer.Id">@customer.Code · @customer.Name</option> }</InputSelect></label>
+                @if (form.OrderType == SalesOrderType.DineIn)
+                {
+                    <label>Dining table<InputSelect class="form-control" @bind-Value="form.DiningTableId"><option value="">Select available table</option>@foreach (var table in AvailableTables) { <option value="@table.Id">@table.Code · @table.Name (@table.Capacity seats)</option> }</InputSelect></label>
+                }
+                <label>Customer name<InputText class="form-control" @bind-Value="form.CustomerName" maxlength="200"/></label>
+                <label>Phone (international format)<InputText class="form-control" type="tel" autocomplete="tel" placeholder="+923001234567" @bind-Value="form.CustomerPhone" maxlength="16"/><small>Include + and country code; 8–15 digits total.</small></label>
+                @if (form.OrderType == SalesOrderType.Delivery) { <label>Delivery address<InputText class="form-control" @bind-Value="form.DeliveryAddress" maxlength="500"/></label> }
+                <label>Notes<InputText class="form-control" @bind-Value="form.Notes" maxlength="1000"/></label>
+            </div><button class="identity-primary-button" disabled="@busy">@(busy ? "Creating…" : "Create order")</button>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private SalesOrderResponse[] orders = [];
+    private SalesReferenceDataResponse references = new([], [], []);
+    private CreateOrderForm form = new();
+    private string? message;
+    private bool error;
+    private bool busy;
+    private bool CanManage => Session.CurrentUser?.Permissions.Contains(SalesPermissionNames.OrdersManage, StringComparer.Ordinal) == true;
+    private SalesDiningTableReference[] AvailableTables => references.DiningTables.Where(table => !orders.Any(order =>
+        order.OrderType == SalesOrderType.DineIn && order.DiningTableId == table.Id && order.Status is not (SalesOrderStatus.Closed or SalesOrderStatus.Cancelled))).ToArray();
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { orders = await Api.GetOrdersAsync(); references = await Api.GetReferencesAsync(); }
+        catch (SalesApiException ex) { Show(ex.Message, true); }
+    }
+    private void CustomerChanged()
+    {
+        var customer = references.Customers.FirstOrDefault(x => x.Id == form.CustomerId);
+        if (customer is null) return;
+        form.CustomerName = customer.Name;
+        form.CustomerPhone = customer.Phone;
+    }
+    private async Task Create()
+    {
+        if (busy) return;
+        if (form.OrderType == SalesOrderType.DineIn && (form.DiningTableId is null || !AvailableTables.Any(x => x.Id == form.DiningTableId)))
+        { Show("Select an available dining table.", true); return; }
+        if (form.OrderType == SalesOrderType.Delivery && (string.IsNullOrWhiteSpace(form.CustomerName) || string.IsNullOrWhiteSpace(form.CustomerPhone) || string.IsNullOrWhiteSpace(form.DeliveryAddress)))
+        { Show("Delivery orders require customer name, phone, and address.", true); return; }
+        busy = true;
+        try
+        {
+            var created = await Api.CreateAsync(new(form.OrderType, form.CustomerId, form.OrderType == SalesOrderType.DineIn ? form.DiningTableId : null,
+                form.CustomerName, form.CustomerPhone, form.OrderType == SalesOrderType.Delivery ? form.DeliveryAddress : string.Empty, form.Notes));
+            Navigation.NavigateTo($"sales/orders/{created.Id}");
+        }
+        catch (SalesApiException ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private void Show(string value, bool failed) { message = value; error = failed; }
+}

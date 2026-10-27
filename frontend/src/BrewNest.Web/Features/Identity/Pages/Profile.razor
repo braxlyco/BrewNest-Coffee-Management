@@ -1,0 +1,95 @@
+@page "/identity/profile"
+@attribute [Authorize]
+@inject IdentitySessionState Session
+@inject NavigationManager Navigation
+
+<PageTitle>My security · BrewNest</PageTitle>
+
+<section class="identity-heading">
+    <div><span class="kicker">MY SECURITY</span><h1>@Session.CurrentUser?.FullName</h1><p>@Session.CurrentUser?.Email</p></div>
+</section>
+
+<div class="identity-two-column">
+    <section class="identity-panel">
+        <h2>Effective roles</h2>
+        <div class="identity-chip-list">
+            @foreach (var role in Session.CurrentUser?.Roles ?? [])
+            {
+                <span>@role</span>
+            }
+        </div>
+        <h2>Permissions</h2>
+        <ul class="identity-permission-list">
+            @foreach (var permission in Session.CurrentUser?.Permissions ?? [])
+            {
+                <li>@permission</li>
+            }
+        </ul>
+    </section>
+
+    <section class="identity-panel security-panel">
+        <div class="security-panel-heading">
+            <span class="security-panel-mark" aria-hidden="true">✦</span>
+            <div><span class="kicker">ACCOUNT PROTECTION</span><h2>Change password</h2><p>Choose a unique password to keep your café workspace secure.</p></div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="identity-message error" role="alert">@message</div>
+        }
+        <EditForm Model="model" OnValidSubmit="ChangePasswordAsync">
+            <DataAnnotationsValidator />
+            <div class="security-form-field">
+                <label for="current-password">Current password</label>
+                <InputText id="current-password" class="form-control" type="password" autocomplete="current-password" @bind-Value="model.CurrentPassword" disabled="@isBusy" />
+                <ValidationMessage For="@(() => model.CurrentPassword)" />
+            </div>
+            <div class="security-form-field">
+                <label for="new-password">New password</label>
+                <InputText id="new-password" class="form-control" type="password" autocomplete="new-password" @bind-Value="model.NewPassword" disabled="@isBusy" />
+                <ValidationMessage For="@(() => model.NewPassword)" />
+            </div>
+            <p class="password-guidance">@IdentityPasswordRules.Guidance</p>
+            <div class="security-form-field">
+                <label for="confirm-password">Confirm new password</label>
+                <InputText id="confirm-password" class="form-control" type="password" autocomplete="new-password" @bind-Value="model.ConfirmPassword" disabled="@isBusy" />
+                <ValidationMessage For="@(() => model.ConfirmPassword)" />
+            </div>
+            <button class="identity-primary-button security-submit" type="submit" disabled="@isBusy">@(isBusy ? "Updating password…" : "Update password")</button>
+            <p class="security-form-note">You’ll sign in again after updating your password.</p>
+        </EditForm>
+    </section>
+</div>
+
+@code {
+    private readonly ChangePasswordFormModel model = new();
+    private string? message;
+    private bool isBusy;
+
+    private async Task ChangePasswordAsync()
+    {
+        if (isBusy) return;
+        isBusy = true;
+        message = null;
+        try
+        {
+            await Session.ChangePasswordAsync(model.CurrentPassword, model.NewPassword);
+            Navigation.NavigateTo("identity/login");
+        }
+        catch (IdentityApiException exception)
+        {
+            message = exception.Message;
+        }
+        catch (HttpRequestException)
+        {
+            message = "The café server is unavailable. Please try again shortly.";
+        }
+        catch (TaskCanceledException)
+        {
+            message = "The request took too long. Please try again.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

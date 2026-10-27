@@ -1,0 +1,7 @@
+@page "/production"
+@attribute [Authorize]
+@inject IdentitySessionState Session
+<PageTitle>Production · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">PLAN TO CONSUME</span><h1>Production</h1><p>Plan menu output, calculate BOM demand, reserve and issue materials, and review consumption variance.</p></section>
+<div class="identity-grid">@if(Has(ProductionPermissionNames.Read)){<a class="identity-action-card" href="production/plans"><strong>Production plans</strong><span>Schedule output and generate production orders</span></a><a class="identity-action-card" href="production/orders"><strong>Production orders</strong><span>Reserve, issue, complete, and review variance</span></a>}</div>
+@code { private bool Has(string permission)=>Session.CurrentUser?.Permissions.Contains(permission,StringComparer.Ordinal)==true; }

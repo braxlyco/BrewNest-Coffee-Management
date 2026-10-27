@@ -1,0 +1,24 @@
+@page "/catalog/parties"
+@attribute [Authorize(Policy=CatalogPermissionNames.MasterDataRead)]
+@inject CatalogApiClient Api
+@inject IdentitySessionState Session
+<PageTitle>Customers & vendors · BrewNest</PageTitle>
+<section class="identity-heading"><div><span class="kicker">CATALOG</span><h1>Customers & vendors</h1><p>Reusable business-partner master data without orders or procurement transactions.</p></div></section>
+@if(message is not null){<div class="identity-message @(error?"error":"success")">@message</div>}
+<div class="identity-two-column">
+<section class="identity-panel"><h2>Customers</h2>
+@foreach(var x in customers){<div class="identity-role-row"><span><strong>@x.Code · @x.Name</strong><small>@x.Phone · @x.Email</small></span><span>@(x.IsActive?"Active":"Inactive")</span></div>}
+@if(CanManage){<EditForm Model="customer" OnValidSubmit="CreateCustomer"><DataAnnotationsValidator/><FormValidationSummary /><div class="identity-form-grid"><Field Label="Code"><InputText class="form-control" @bind-Value="customer.Code"/></Field><Field Label="Name"><InputText class="form-control" @bind-Value="customer.Name"/></Field><Field Label="Phone (optional, with country code)"><InputText class="form-control" type="tel" inputmode="tel" maxlength="16" placeholder="+923001234567" @bind-Value="customer.Phone"/></Field><Field Label="Email"><InputText class="form-control" type="email" @bind-Value="customer.Email"/></Field><Field Label="Address"><InputText class="form-control" @bind-Value="customer.Address"/></Field></div><button class="identity-primary-button">Add customer</button></EditForm>}
+</section>
+<section class="identity-panel"><h2>Vendors</h2>
+@foreach(var x in vendors){<div class="identity-role-row"><span><strong>@x.Code · @x.Name</strong><small>@x.ContactPerson · @x.Phone</small></span><span>@(x.IsActive?"Active":"Inactive")</span></div>}
+@if(CanManage){<EditForm Model="vendor" OnValidSubmit="CreateVendor"><DataAnnotationsValidator/><FormValidationSummary /><div class="identity-form-grid"><Field Label="Code"><InputText class="form-control" @bind-Value="vendor.Code"/></Field><Field Label="Name"><InputText class="form-control" @bind-Value="vendor.Name"/></Field><Field Label="Contact"><InputText class="form-control" @bind-Value="vendor.ContactPerson"/></Field><Field Label="Phone (optional, with country code)"><InputText class="form-control" type="tel" inputmode="tel" maxlength="16" placeholder="+923001234567" @bind-Value="vendor.Phone"/></Field><Field Label="Email"><InputText class="form-control" type="email" @bind-Value="vendor.Email"/></Field><Field Label="Address"><InputText class="form-control" @bind-Value="vendor.Address"/></Field><Field Label="Tax number"><InputText class="form-control" @bind-Value="vendor.TaxNumber"/></Field></div><button class="identity-primary-button">Add vendor</button></EditForm>}
+</section></div>
+@code{
+private CustomerResponse[] customers=[];private VendorResponse[] vendors=[];private PartyForm customer=new(),vendor=new();private string? message;private bool error;
+private bool CanManage=>Session.CurrentUser?.Permissions.Contains(CatalogPermissionNames.MasterDataManage,StringComparer.Ordinal)==true;
+protected override async Task OnInitializedAsync()=>await Load();
+private async Task Load(){try{customers=await Api.GetCustomersAsync();vendors=await Api.GetVendorsAsync();}catch(CatalogApiException ex){Show(ex.Message,true);}}
+private async Task CreateCustomer(){try{await Api.CreateCustomerAsync(new(customer.Code,customer.Name,customer.Phone,customer.Email,customer.Address));customer=new();await Load();Show("Customer created.",false);}catch(CatalogApiException ex){Show(ex.Message,true);}}
+private async Task CreateVendor(){try{await Api.CreateVendorAsync(new(vendor.Code,vendor.Name,vendor.ContactPerson,vendor.Phone,vendor.Email,vendor.Address,vendor.TaxNumber));vendor=new();await Load();Show("Vendor created.",false);}catch(CatalogApiException ex){Show(ex.Message,true);}}
+private void Show(string x,bool failed){message=x;error=failed;}}

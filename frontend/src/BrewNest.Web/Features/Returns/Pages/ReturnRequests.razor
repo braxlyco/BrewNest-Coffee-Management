@@ -1,0 +1,175 @@
+@page "/returns/requests"
+@attribute [Authorize(Policy = ReturnsPermissionNames.Read)]
+@inject ReturnsApiClient Api
+@inject SalesApiClient SalesApi
+@inject CatalogApiClient CatalogApi
+@inject IdentitySessionState Session
+
+<PageTitle>Return Requests | BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">RETURNS</p><h1>Return requests &amp; RMA</h1><p>Choose a billed item, approve the request, then document inspection and disposition.</p></section>
+@if (message is not null) { <div class="alert" role="status">@message</div> }
+<div class="workspace-grid">
+    @if (CanManage)
+    {
+        <section class="panel">
+            <h2>New return</h2>
+            @if (referenceError is not null) { <p class="alert">@referenceError</p> }
+            <EditForm Model="form" OnValidSubmit="Create">
+                <DataAnnotationsValidator /><FormValidationSummary />
+                <div class="form-grid">
+                    <label>Original bill
+                        <InputSelect @bind-Value="form.BillNumber">
+                            <option value="">Select a bill</option>
+                            @foreach (var order in BillChoices) { <option value="@order.Bill!.BillNumber">@order.Bill.BillNumber · @order.OrderNumber</option> }
+                        </InputSelect>
+                    </label>
+                    <label>Returned item
+                        <InputSelect @bind-Value="form.SalesLineId">
+                            <option value="">Select an item from the bill</option>
+                            @foreach (var line in SelectedOrder?.Lines.Where(x => !x.IsCancelled) ?? [])
+                            {
+                                <option value="@line.Id">@line.ItemCode · @line.ItemName · sold @line.Quantity.ToString("N3")</option>
+                            }
+                        </InputSelect>
+                    </label>
+                    <label>Quantity <InputNumber step="0.001" min="0.001" @bind-Value="form.Quantity" /></label>
+                    <label>Reason <InputText @bind-Value="form.Reason" /></label>
+                </div>
+                <button class="primary-button" type="submit" disabled="@(busy || SelectedOrder is null)">@(busy ? "Creating…" : "Create RMA")</button>
+            </EditForm>
+            @if (BillChoices.Length == 0 && referenceError is null) { <p>No active billed orders are available in Sales.</p> }
+        </section>
+    }
+    <section class="panel">
+        <h2>Requests</h2>
+        @if (values.Length == 0) { <p>No return requests yet.</p> }
+        @foreach (var request in values)
+        {
+            <article class="list-card">
+                <strong>@request.ReturnNumber · @request.RmaNumber</strong><span class="status-pill">@request.Status</span>
+                <p>Bill @request.BillNumber · PKR @request.TotalAmount.ToString("N2")</p>
+                @if (CanApprove && request.Status == ReturnStatus.PendingApproval) { <button type="button" disabled="@busy" @onclick="() => Approve(request)">Approve next step</button> }
+                @foreach (var line in request.Lines.Where(x => x.Disposition == ReturnDisposition.Pending))
+                {
+                    <p>@line.ItemName · @line.Quantity.ToString("N3")</p>
+                    @if (CanInspect && request.Status == ReturnStatus.InspectionPending) { <button type="button" disabled="@busy" @onclick="() => BeginInspection(request, line)">Record inspection</button> }
+                }
+                @if (request.CreditNoteNumber is not null) { <small>Credit: @request.CreditNoteNumber · Refund: @request.RefundReference</small> }
+            </article>
+        }
+    </section>
+</div>
+@if (CanInspect && selectedRequest is not null && selectedLine is not null)
+{
+    <section class="panel">
+        <h2>Inspect @selectedLine.ItemName</h2>
+        <p>Restock only after all safety checks pass. Failed or opened food is recorded as disposal.</p>
+        <EditForm Model="inspection" OnValidSubmit="SubmitInspection">
+            <DataAnnotationsValidator /><FormValidationSummary />
+            <div class="form-grid">
+                <label><InputCheckbox @bind-Value="inspection.RestockRequested" /> Restock requested</label>
+                <label><InputCheckbox @bind-Value="inspection.IsSealed" /> Sealed</label>
+                <label><InputCheckbox @bind-Value="inspection.IsPackagingIntact" /> Packaging intact</label>
+                <label><InputCheckbox @bind-Value="inspection.ManufacturingDateChecked" /> Manufacturing date checked</label>
+                <label>Manufacturing date <InputDate @bind-Value="inspection.ManufacturingDate" /></label>
+                <label>Expiry date <InputDate @bind-Value="inspection.ExpiryDate" /></label>
+                <label>Lot/batch <InputText @bind-Value="inspection.LotNumber" /></label>
+                <label>Warehouse
+                    <InputSelect @bind-Value="inspection.WarehouseId">
+                        <option value="">Select for restocking</option>
+                        @foreach (var warehouse in warehouses.Where(x => x.IsActive)) { <option value="@warehouse.Id">@warehouse.Code · @warehouse.Name</option> }
+                    </InputSelect>
+                </label>
+                <label><InputCheckbox @bind-Value="inspection.BatchVerified" /> Batch verified</label>
+                <label><InputCheckbox @bind-Value="inspection.QualityPassed" /> Quality inspection passed</label>
+                <label>Criterion <InputText @bind-Value="inspection.Criterion" /></label>
+                <label>Result <InputText @bind-Value="inspection.Result" /></label>
+                <label>Remarks <InputText @bind-Value="inspection.Remarks" /></label>
+                <label>Supporting reference <InputText @bind-Value="inspection.SupportingReference" /></label>
+            </div>
+            @if (warehouseError is not null) { <p class="alert">@warehouseError</p> }
+            <button class="primary-button" type="submit" disabled="@busy">@(busy ? "Submitting…" : "Submit disposition")</button>
+            <button type="button" @onclick="CancelInspection">Cancel</button>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private ReturnForm form = new();
+    private ReturnInspectionForm inspection = new();
+    private ReturnResponse[] values = [];
+    private SalesOrderResponse[] orders = [];
+    private WarehouseResponse[] warehouses = [];
+    private ReturnResponse? selectedRequest;
+    private ReturnLineResponse? selectedLine;
+    private string? message;
+    private string? referenceError;
+    private string? warehouseError;
+    private bool busy;
+    private bool Has(string permission) => Session.CurrentUser?.Permissions.Contains(permission, StringComparer.Ordinal) == true;
+    private bool CanManage => Has(ReturnsPermissionNames.Manage);
+    private bool CanApprove => Has(ReturnsPermissionNames.Approve);
+    private bool CanInspect => Has(ReturnsPermissionNames.Inspect);
+    private SalesOrderResponse[] BillChoices => orders.Where(x => x.Bill is not null && x.Status is SalesOrderStatus.Billed or SalesOrderStatus.Closed).ToArray();
+    private SalesOrderResponse? SelectedOrder => BillChoices.FirstOrDefault(x => x.Bill!.BillNumber == form.BillNumber);
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { values = await Api.Returns(); } catch (Exception exception) { message = exception.Message; }
+        try { orders = await SalesApi.GetOrdersAsync(); referenceError = null; }
+        catch (Exception) { referenceError = "Bill choices are unavailable. Sales order read access is required."; }
+        try { warehouses = await CatalogApi.GetWarehousesAsync(); warehouseError = null; }
+        catch (Exception) { warehouseError = "Warehouse choices are unavailable. Catalog warehouse read access is required for restocking."; }
+    }
+    private async Task Create()
+    {
+        if (busy || SelectedOrder is null || !Guid.TryParse(form.SalesLineId, out var lineId) ||
+            !SelectedOrder.Lines.Any(x => x.Id == lineId && !x.IsCancelled))
+        {
+            message = "Select a returned item from the selected bill.";
+            return;
+        }
+        busy = true;
+        try { await Api.Create(new(form.BillNumber, form.Reason, [new(lineId, form.Quantity)])); form = new(); await Load(); message = "RMA created."; }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+    private async Task Approve(ReturnResponse request)
+    {
+        if (busy) return;
+        busy = true;
+        try { await Api.Decide(request.Id, new(true, "Approved for inspection", request.Version)); await Load(); message = "Approval recorded."; }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+    private void BeginInspection(ReturnResponse request, ReturnLineResponse line)
+    {
+        selectedRequest = request;
+        selectedLine = line;
+        inspection = new();
+        message = null;
+    }
+    private void CancelInspection() { selectedRequest = null; selectedLine = null; }
+    private async Task SubmitInspection()
+    {
+        if (busy || selectedRequest is null || selectedLine is null) return;
+        busy = true;
+        try
+        {
+            await Api.Inspect(selectedRequest.Id, selectedLine.Id, new(
+                inspection.IsSealed, inspection.IsPackagingIntact, inspection.ManufacturingDateChecked,
+                ToDateOnly(inspection.ManufacturingDate), ToDateOnly(inspection.ExpiryDate), inspection.LotNumber,
+                Guid.TryParse(inspection.WarehouseId, out var warehouseId) ? warehouseId : Guid.Empty,
+                inspection.BatchVerified, inspection.QualityPassed, inspection.RestockRequested,
+                inspection.Criterion, inspection.Result, inspection.Remarks, inspection.SupportingReference, selectedLine.Version));
+            var result = inspection.RestockRequested ? "Restocking disposition submitted." : "Disposal disposition submitted.";
+            CancelInspection();
+            await Load();
+            message = result;
+        }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+    private static DateOnly? ToDateOnly(DateTime? value) => value is null ? null : DateOnly.FromDateTime(value.Value);
+}

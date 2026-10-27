@@ -1,0 +1,12 @@
+@page "/inventory"
+@attribute [Authorize]
+@inject IdentitySessionState Session
+<PageTitle>Inventory · BrewNest</PageTitle>
+<section class="identity-heading"><div><span class="kicker">STOCK CONTROL</span><h1>Inventory</h1><p>Lot-level balances, reservations, immutable movements, expiry control, and safeguarded stock transactions.</p></div></section>
+<div class="identity-grid">
+    @if(Has(InventoryPermissionNames.StockRead)){<a class="identity-action-card" href="inventory/lots"><strong>Lots & receipts</strong><span>On-hand, reserved, available, and batch dates</span></a><a class="identity-action-card" href="inventory/movements"><strong>Stock ledger</strong><span>Append-only movement history</span></a>}
+    @if(Has(InventoryPermissionNames.StockRead)&&Has(InventoryPermissionNames.ReservationsManage)){<a class="identity-action-card" href="inventory/reservations"><strong>Reservations</strong><span>Reserve and release available stock</span></a>}
+    @if(Has(InventoryPermissionNames.StockRead)&&(Has(InventoryPermissionNames.StockManage)||Has(InventoryPermissionNames.AdjustmentsManage)||Has(InventoryPermissionNames.WastageManage))){<a class="identity-action-card" href="inventory/transactions"><strong>Stock controls</strong><span>Issues, adjustments, wastage, and blocks</span></a>}
+    @if(Has(InventoryPermissionNames.ExpiryRead)){<a class="identity-action-card" href="inventory/expiry"><strong>Expiry alerts</strong><span>First, escalated, critical, and expired lots</span></a>}
+</div>
+@code { private bool Has(string permission)=>Session.CurrentUser?.Permissions.Contains(permission,StringComparer.Ordinal)==true; }

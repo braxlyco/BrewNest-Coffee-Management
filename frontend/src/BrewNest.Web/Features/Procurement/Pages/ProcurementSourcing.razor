@@ -1,0 +1,102 @@
+@page "/procurement/sourcing"
+@attribute [Authorize(Policy=ProcurementPermissionNames.Read)]
+@inject ProcurementApiClient Api
+@inject IdentitySessionState Session
+
+<PageTitle>Sourcing · BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">PROCUREMENT</p><h1>RFQs & quotation comparison</h1><p>Invite active vendors, record item-level prices, and select an offer for purchase-order approval.</p></section>
+@if (message is not null) { <div class="identity-message @(error ? "error" : "success")" role="alert">@message</div> }
+@if (CanSource)
+{
+    <div class="workspace-grid">
+        <section class="panel"><h2>Issue an RFQ</h2><EditForm Model="rfqForm" OnValidSubmit="CreateRfq"><DataAnnotationsValidator/><FormValidationSummary />
+            <div class="form-grid"><label>Approved requisition<InputSelect @bind-Value="rfqForm.RequisitionId"><option value="">Select requisition</option>@foreach (var request in requisitions.Where(x => x.Status == RequisitionStatus.Approved)) { <option value="@request.Id">@request.Number · @request.Department</option> }</InputSelect></label>
+                <label>Response deadline<InputDate @bind-Value="rfqForm.ResponseDeadline"/></label></div>
+            <fieldset><legend>Invite vendors</legend>@foreach (var vendor in references?.Vendors ?? []) { <label class="identity-check-row"><input type="checkbox" checked="@rfqForm.VendorIds.Contains(vendor.Id)" @onchange="e => ToggleVendor(vendor.Id, e.Value is true)"/> @vendor.Code · @vendor.Name</label> }</fieldset>
+            <button class="primary-button" disabled="@busy">Issue RFQ</button>
+        </EditForm></section>
+        <section class="panel"><h2>Record vendor quotation</h2><EditForm Model="quoteForm" OnValidSubmit="SubmitQuote"><DataAnnotationsValidator/><FormValidationSummary />
+            <div class="form-grid"><label>Issued RFQ<InputSelect @bind-Value="quoteForm.RfqId" @bind-Value:after="RfqChanged"><option value="">Select RFQ</option>@foreach (var rfq in rfqs.Where(x => x.Status == RfqStatus.Issued)) { <option value="@rfq.Id">@rfq.Number</option> }</InputSelect></label>
+                <label>Invited vendor<InputSelect @bind-Value="quoteForm.VendorId"><option value="">Select vendor</option>@foreach (var vendor in AvailableVendors) { <option value="@vendor.Id">@vendor.Code · @vendor.Name</option> }</InputSelect></label>
+                <label>Vendor reference<InputText @bind-Value="quoteForm.Reference" maxlength="100"/></label><label>Valid until<InputDate @bind-Value="quoteForm.ValidUntil"/></label></div>
+            @foreach (var line in quoteForm.Lines)
+            {
+                <div class="form-grid"><strong>@line.ItemName</strong><label>Quantity<InputNumber @bind-Value="line.Quantity" min="0.001" step="0.001"/></label><label>Unit price (PKR)<InputNumber @bind-Value="line.UnitPrice" min="0" step="0.01"/></label><label>Lead time (days)<InputNumber @bind-Value="line.LeadTimeDays" min="0"/></label></div>
+            }
+            <button class="primary-button" disabled="@(busy || quoteForm.Lines.Count == 0)">Record quotation</button>
+        </EditForm></section>
+    </div>
+}
+<section class="panel"><h2>Issued RFQs</h2>@foreach (var rfq in rfqs) { <article class="list-card"><strong>@rfq.Number</strong><span class="status-pill">@rfq.Status</span><p>Deadline @rfq.ResponseDeadline · @rfq.VendorIds.Length invited vendor(s)</p></article> }@if (rfqs.Length == 0) { <p>No RFQs yet. Approve a requisition first.</p> }</section>
+<section class="panel"><h2>Compare quotations</h2>@foreach (var quote in quotes) { <article class="list-card"><strong>@quote.VendorName</strong><span class="status-pill">@quote.Status</span><p>RFQ @RfqName(quote.RfqId) · PKR @quote.Total.ToString("N2") · valid until @quote.ValidUntil</p>@foreach (var line in quote.Lines) { <small>@ItemName(line.ItemId): @line.Quantity.ToString("N3") × PKR @line.UnitPrice.ToString("N2") · @line.LeadTimeDays day(s)</small><br/> }@if (CanSelect && quote.Status == QuotationStatus.Received) { <button class="primary-button" disabled="@busy" @onclick="() => SelectQuote(quote)">Select offer & create PO</button> }</article> }@if (quotes.Length == 0) { <p>No quotations recorded yet.</p> }</section>
+
+@code {
+    private ProcurementReferenceData? references;
+    private RequisitionResponse[] requisitions = [];
+    private RfqResponse[] rfqs = [];
+    private QuotationResponse[] quotes = [];
+    private RfqForm rfqForm = new();
+    private QuotationForm quoteForm = new();
+    private string? message;
+    private bool error;
+    private bool busy;
+    private bool Has(string name) => Session.CurrentUser?.Permissions.Contains(name, StringComparer.Ordinal) == true;
+    private bool CanSource => Has(ProcurementPermissionNames.SourcingManage);
+    private bool CanSelect => Has(ProcurementPermissionNames.OrdersManage);
+    private RfqResponse? SelectedRfq => rfqs.FirstOrDefault(x => x.Id == quoteForm.RfqId);
+    private ProcurementVendorReference[] AvailableVendors => (references?.Vendors ?? []).Where(x => SelectedRfq?.VendorIds.Contains(x.Id) == true).ToArray();
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { references = await Api.References(); requisitions = await Api.Requisitions(); rfqs = await Api.Rfqs(); quotes = await Api.Quotations(); }
+        catch (Exception ex) { Show(ex.Message, true); }
+    }
+    private void ToggleVendor(Guid id, bool selected) { if (selected) rfqForm.VendorIds.Add(id); else rfqForm.VendorIds.Remove(id); }
+    private void RfqChanged()
+    {
+        quoteForm.VendorId = null;
+        var request = requisitions.FirstOrDefault(x => x.Id == SelectedRfq?.RequisitionId);
+        quoteForm.Lines = request?.Lines.Select(x => new QuotationLineForm
+        {
+            ItemId = x.ItemId, ItemName = ItemName(x.ItemId), Quantity = x.Quantity, UnitPrice = x.EstimatedUnitPrice
+        }).ToList() ?? [];
+    }
+    private string ItemName(Guid id) => references?.Items.FirstOrDefault(x => x.Id == id)?.Name ?? "Unavailable item";
+    private string RfqName(Guid id) => rfqs.FirstOrDefault(x => x.Id == id)?.Number ?? "Unavailable RFQ";
+
+    private async Task CreateRfq()
+    {
+        if (busy) return;
+        if (rfqForm.RequisitionId is null || !requisitions.Any(x => x.Id == rfqForm.RequisitionId && x.Status == RequisitionStatus.Approved)) { Show("Select an approved requisition.", true); return; }
+        if (rfqForm.VendorIds.Count == 0) { Show("Invite at least one active vendor.", true); return; }
+        if (rfqForm.ResponseDeadline.Date < DateTime.Today) { Show("Response deadline cannot be in the past.", true); return; }
+        busy = true;
+        try { await Api.CreateRfq(new(rfqForm.RequisitionId.Value, DateOnly.FromDateTime(rfqForm.ResponseDeadline), rfqForm.VendorIds.ToArray())); rfqForm = new(); await Load(); Show("RFQ issued to selected vendors.", false); }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private async Task SubmitQuote()
+    {
+        if (busy) return;
+        if (quoteForm.RfqId is null || quoteForm.VendorId is null || !AvailableVendors.Any(x => x.Id == quoteForm.VendorId)) { Show("Select an issued RFQ and invited vendor.", true); return; }
+        if (quoteForm.ValidUntil.Date < DateTime.Today || quoteForm.Lines.Count == 0 || quoteForm.Lines.Any(x => x.Quantity <= 0 || x.UnitPrice < 0 || x.LeadTimeDays < 0)) { Show("Quote every requested item with valid quantity, price, lead time, and expiry date.", true); return; }
+        busy = true;
+        try
+        {
+            await Api.SubmitQuotation(quoteForm.RfqId.Value, new(quoteForm.VendorId.Value, DateOnly.FromDateTime(quoteForm.ValidUntil), quoteForm.Reference,
+                quoteForm.Lines.Select(x => new QuotationLineRequest(x.ItemId, x.Quantity, x.UnitPrice, x.LeadTimeDays)).ToArray()));
+            quoteForm = new(); await Load(); Show("Vendor quotation recorded.", false);
+        }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private async Task SelectQuote(QuotationResponse quote)
+    {
+        if (busy) return; busy = true;
+        try { await Api.SelectQuotation(quote.Id, new("Selected after quotation comparison.", quote.Version)); await Load(); Show("Purchase order created for approval.", false); }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private void Show(string value, bool failed) { message = value; error = failed; }
+}

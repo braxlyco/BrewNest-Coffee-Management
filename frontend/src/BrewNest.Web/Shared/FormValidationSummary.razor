@@ -1,0 +1,75 @@
+@using System.Text.RegularExpressions
+@implements IDisposable
+
+@if (messages.Length > 0)
+{
+    <div class="form-validation-alert" role="alert">
+        <span class="form-validation-icon" aria-hidden="true">!</span>
+        <div>
+            <strong>Please check these details</strong>
+            <ul>
+                @foreach (var message in messages)
+                {
+                    <li>@message</li>
+                }
+            </ul>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
+
+    private EditContext? editContext;
+    private string[] messages = [];
+
+    protected override void OnParametersSet()
+    {
+        if (CascadedEditContext is null)
+        {
+            throw new InvalidOperationException($"{nameof(FormValidationSummary)} requires an EditForm.");
+        }
+
+        if (!ReferenceEquals(editContext, CascadedEditContext))
+        {
+            if (editContext is not null)
+            {
+                editContext.OnValidationStateChanged -= OnValidationStateChanged;
+            }
+
+            editContext = CascadedEditContext;
+            editContext.OnValidationStateChanged += OnValidationStateChanged;
+        }
+
+        RefreshMessages();
+    }
+
+    private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs args)
+    {
+        RefreshMessages();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshMessages()
+    {
+        messages = editContext?.GetValidationMessages()
+            .Select(Humanize)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray() ?? [];
+    }
+
+    private static string Humanize(string message)
+    {
+        var spaced = Regex.Replace(message, "([a-z0-9])([A-Z])", "$1 $2", RegexOptions.CultureInvariant);
+        spaced = Regex.Replace(spaced, "([A-Z])([A-Z][a-z])", "$1 $2", RegexOptions.CultureInvariant);
+        return Regex.Replace(spaced, @"\bId\b", "ID", RegexOptions.CultureInvariant);
+    }
+
+    public void Dispose()
+    {
+        if (editContext is not null)
+        {
+            editContext.OnValidationStateChanged -= OnValidationStateChanged;
+        }
+    }
+}

@@ -1,0 +1,144 @@
+@page "/identity/roles"
+@attribute [Authorize(Policy = IdentityPermissionNames.RolesRead)]
+@inject IdentityApiClient ApiClient
+@inject IdentitySessionState Session
+
+<PageTitle>Roles & permissions · BrewNest</PageTitle>
+
+<section class="identity-heading">
+    <div><span class="kicker">AUTHORIZATION</span><h1>Roles & permissions</h1><p>Explicit permission grants are versioned and revocable without deleting their history.</p></div>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="identity-message @(hasError ? "error" : "success")">@message</div>
+}
+
+@if (CanManageRoles)
+{
+    <section class="identity-panel identity-create-panel">
+        <h2>Create role</h2>
+        <EditForm Model="createModel" OnValidSubmit="CreateRoleAsync">
+            <DataAnnotationsValidator />
+            <FormValidationSummary />
+            <div class="identity-form-grid">
+                <div><label>Name</label><InputText class="form-control" @bind-Value="createModel.Name" /></div>
+                <div><label>Description</label><InputText class="form-control" @bind-Value="createModel.Description" /></div>
+            </div>
+            <button class="identity-primary-button" type="submit">Create role</button>
+        </EditForm>
+    </section>
+}
+
+<div class="identity-two-column">
+    <section class="identity-panel">
+        <h2>Roles</h2>
+        @foreach (var role in roles)
+        {
+            <button class="identity-role-row @(selectedRole?.Id == role.Id ? "selected" : string.Empty)" type="button" @onclick="() => SelectRole(role)">
+                <span><strong>@role.Name</strong><small>@role.Description</small></span>
+                <span class="identity-status @(role.IsActive ? "active" : "inactive")">@(role.IsActive ? "Active" : "Inactive")</span>
+            </button>
+        }
+    </section>
+
+    @if (selectedRole is not null)
+    {
+        <section class="identity-panel">
+            <h2>@selectedRole.Name permissions</h2>
+            @foreach (var group in permissions.GroupBy(permission => permission.Group))
+            {
+                <h3>@group.Key</h3>
+                @foreach (var permission in group)
+                {
+                    <label class="identity-check permission">
+                        <input type="checkbox" disabled="@(!CanManagePermissions)" checked="@selectedPermissions.Contains(permission.Name)" @onchange="eventArgs => TogglePermission(permission.Name, eventArgs)" />
+                        <span><strong>@permission.Name</strong><small>@permission.Description</small></span>
+                    </label>
+                }
+            }
+            @if (CanManagePermissions)
+            {
+                <button class="identity-primary-button" type="button" @onclick="SavePermissionsAsync">Save permissions</button>
+            }
+            @if (CanManageRoles)
+            {
+                <button class="identity-secondary-button" type="button" @onclick="ToggleRoleStatusAsync">@(selectedRole.IsActive ? "Deactivate role" : "Activate role")</button>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private readonly CreateRoleFormModel createModel = new();
+    private RoleResponse[] roles = [];
+    private PermissionResponse[] permissions = [];
+    private RoleResponse? selectedRole;
+    private HashSet<string> selectedPermissions = new(StringComparer.Ordinal);
+    private string? message;
+    private bool hasError;
+    private bool CanManageRoles => HasPermission(IdentityPermissionNames.RolesManage);
+    private bool CanManagePermissions => HasPermission(IdentityPermissionNames.PermissionsManage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            roles = await ApiClient.GetRolesAsync();
+            if (HasPermission(IdentityPermissionNames.PermissionsRead)) permissions = await ApiClient.GetPermissionsAsync();
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private async Task CreateRoleAsync()
+    {
+        try
+        {
+            await ApiClient.CreateRoleAsync(new CreateRoleRequest(createModel.Name, createModel.Description));
+            createModel.Name = createModel.Description = string.Empty;
+            roles = await ApiClient.GetRolesAsync();
+            ShowSuccess("Role created.");
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private void SelectRole(RoleResponse role)
+    {
+        selectedRole = role;
+        selectedPermissions = role.Permissions.ToHashSet(StringComparer.Ordinal);
+    }
+
+    private void TogglePermission(string permission, ChangeEventArgs eventArgs)
+    {
+        if (eventArgs.Value is true) selectedPermissions.Add(permission); else selectedPermissions.Remove(permission);
+    }
+
+    private async Task SavePermissionsAsync()
+    {
+        if (selectedRole is null) return;
+        try
+        {
+            await ApiClient.SetRolePermissionsAsync(selectedRole.Id, new SetRolePermissionsRequest(selectedPermissions.ToArray()));
+            roles = await ApiClient.GetRolesAsync();
+            selectedRole = roles.Single(role => role.Id == selectedRole.Id);
+            ShowSuccess("Permission grants updated. Affected refresh sessions were revoked.");
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private async Task ToggleRoleStatusAsync()
+    {
+        if (selectedRole is null) return;
+        try
+        {
+            selectedRole = await ApiClient.UpdateRoleAsync(selectedRole.Id, new UpdateRoleRequest(selectedRole.Name, selectedRole.Description, !selectedRole.IsActive, selectedRole.Version));
+            roles = await ApiClient.GetRolesAsync();
+            ShowSuccess(selectedRole.IsActive ? "Role activated." : "Role deactivated and affected refresh sessions revoked.");
+        }
+        catch (IdentityApiException exception) { ShowError(exception.Message); }
+    }
+
+    private bool HasPermission(string permission) => Session.CurrentUser?.Permissions.Contains(permission, StringComparer.Ordinal) == true;
+    private void ShowError(string text) { message = text; hasError = true; }
+    private void ShowSuccess(string text) { message = text; hasError = false; }
+}

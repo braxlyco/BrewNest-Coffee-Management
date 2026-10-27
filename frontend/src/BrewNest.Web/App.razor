@@ -1,0 +1,51 @@
+@inject IdentitySessionState Session
+
+@if (initializationError is not null)
+{
+    <div class="identity-message error session-notice" role="alert">@initializationError <a href="identity/login" @onclick="ClearNotice">Go to sign in</a></div>
+}
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Shared.Pages.NotFound)">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized Context="authentication">
+                    <section class="empty-state">
+                        <CafeIcon Name="users" />
+                        @if (authentication.User.Identity?.IsAuthenticated == true)
+                        {
+                            <h1>This workspace needs permission.</h1>
+                            <p>Ask your café administrator for access, or choose another workspace.</p>
+                            <a class="back-link" href="">Back to overview</a>
+                        }
+                        else
+                        {
+                            <h1>Your workspace is waiting.</h1>
+                            <p>Sign in with your BrewNest account to continue.</p>
+                            <a class="identity-primary-button" href="identity/login">Go to sign in</a>
+                        }
+                    </section>
+                </NotAuthorized>
+                <Authorizing><div class="empty-state" role="status">Checking your workspace access…</div></Authorizing>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+    </Router>
+</CascadingAuthenticationState>
+
+@code {
+    private string? initializationError;
+    private void ClearNotice() => initializationError = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Session.InitializeAsync();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or Microsoft.JSInterop.JSException)
+        {
+            initializationError = "We couldn't restore your session. Check that the café server is running, then sign in again.";
+        }
+    }
+}

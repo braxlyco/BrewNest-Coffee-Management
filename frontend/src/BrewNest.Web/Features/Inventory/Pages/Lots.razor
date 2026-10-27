@@ -1,0 +1,89 @@
+@page "/inventory/lots"
+@attribute [Authorize(Policy=InventoryPermissionNames.StockRead)]
+@inject InventoryApiClient Api
+@inject IdentitySessionState Session
+
+<PageTitle>Stock lots · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">INVENTORY</span><h1>Stock lots</h1><p>Track physical, reserved, and available quantities by item, warehouse, and batch.</p></section>
+@if (message is not null) { <div class="identity-message @(error ? "error" : "success")" role="alert">@message</div> }
+<section class="identity-panel">
+    <div class="identity-table-wrap"><table class="identity-table"><thead><tr><th>Lot</th><th>Item</th><th>Warehouse</th><th>Dates</th><th>On hand</th><th>Reserved</th><th>Available</th><th>Status</th></tr></thead><tbody>
+        @foreach (var lot in lots)
+        {
+            <tr><td><strong>@lot.LotNumber</strong></td><td>@ItemName(lot.ItemId)</td><td>@WarehouseName(lot.WarehouseId)</td><td><small>Mfg: @(lot.ManufacturingDate?.ToString("yyyy-MM-dd") ?? "—")</small><small>Exp: @(lot.ExpiryDate?.ToString("yyyy-MM-dd") ?? "—")</small></td><td>@lot.OnHandQuantity.ToString("N3")</td><td>@lot.ReservedQuantity.ToString("N3")</td><td>@lot.AvailableQuantity.ToString("N3")</td><td><span class="identity-status @(lot.IsBlocked ? "inactive" : "active")">@(lot.IsBlocked ? $"Blocked: {lot.BlockReason}" : "Available")</span></td></tr>
+        }
+    </tbody></table></div>
+    @if (lots.Length == 0) { <p>No stock lots yet. Receive an active Catalog material to create one.</p> }
+</section>
+@if (CanReceive)
+{
+    <section class="identity-panel"><h2>Goods receipt</h2><p>Choose active Catalog records. An existing lot must retain its original manufacturing and expiry dates.</p>
+        @if (!referencesAvailable) { <p class="identity-message error">Catalog choices are unavailable. Ask an administrator to grant Catalog read access, then reload.</p> }
+        <EditForm Model="form" OnValidSubmit="Receive"><DataAnnotationsValidator/><FormValidationSummary />
+            <div class="identity-form-grid">
+                <label>Catalog item<InputSelect class="form-control" @bind-Value="form.ItemId"><option value="">Select active item</option>@foreach (var item in items.Where(x => x.IsActive)) { <option value="@item.Id">@item.Code · @item.Name (@item.ItemType)</option> }</InputSelect></label>
+                <label>Warehouse<InputSelect class="form-control" @bind-Value="form.WarehouseId"><option value="">Select active warehouse</option>@foreach (var warehouse in warehouses.Where(x => x.IsActive)) { <option value="@warehouse.Id">@warehouse.Code · @warehouse.Name</option> }</InputSelect></label>
+                <label>Lot / batch<InputText class="form-control" @bind-Value="form.LotNumber" maxlength="100"/></label>
+                <label>Quantity<InputNumber class="form-control" @bind-Value="form.Quantity" min="0.001" step="0.001"/></label>
+                <label>Manufacturing date<InputDate TValue="DateOnly?" class="form-control" @bind-Value="form.ManufacturingDate"/></label>
+                <label>Expiry date<InputDate TValue="DateOnly?" class="form-control" @bind-Value="form.ExpiryDate"/></label>
+                <label>Reference type<InputText class="form-control" @bind-Value="form.ReferenceType" maxlength="80"/></label>
+                <label>Reference number<InputText class="form-control" @bind-Value="form.ReferenceNumber" maxlength="100"/></label>
+                <label>Remarks<InputText class="form-control" @bind-Value="form.Remarks" maxlength="500"/></label>
+            </div><button class="identity-primary-button" disabled="@(!referencesAvailable || busy)">@(busy ? "Posting…" : "Post receipt")</button>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private StockLotResponse[] lots = [];
+    private InventoryCatalogItemReference[] items = [];
+    private InventoryCatalogWarehouseReference[] warehouses = [];
+    private ReceiptForm form = new();
+    private string? message;
+    private bool error;
+    private bool busy;
+    private bool referencesAvailable;
+    private bool CanReceive => Session.CurrentUser?.Permissions.Contains(InventoryPermissionNames.StockManage, StringComparer.Ordinal) == true;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        try { lots = await Api.GetLotsAsync(); }
+        catch (InventoryApiException ex) { Show(ex.Message, true); }
+        try
+        {
+            var references = await Api.GetReferencesAsync();
+            items = references.Items;
+            warehouses = references.Warehouses;
+            referencesAvailable = true;
+        }
+        catch (InventoryApiException ex) { referencesAvailable = false; Show(ex.Message, true); }
+    }
+
+    private string ItemName(Guid id) => items.FirstOrDefault(x => x.Id == id)?.Name ?? "Inactive or unavailable item";
+    private string WarehouseName(Guid id) => warehouses.FirstOrDefault(x => x.Id == id)?.Name ?? "Inactive or unavailable warehouse";
+
+    private async Task Receive()
+    {
+        if (busy) return;
+        if (!Guid.TryParse(form.ItemId, out var item) || !Guid.TryParse(form.WarehouseId, out var warehouse) ||
+            !items.Any(x => x.Id == item) || !warehouses.Any(x => x.Id == warehouse))
+        { Show("Select an active item and warehouse.", true); return; }
+        if (form.ManufacturingDate is not null && form.ExpiryDate is not null && form.ManufacturingDate > form.ExpiryDate)
+        { Show("Manufacturing date cannot follow expiry date.", true); return; }
+        busy = true;
+        try
+        {
+            await Api.ReceiveAsync(new(item, warehouse, form.LotNumber, form.ManufacturingDate, form.ExpiryDate, form.Quantity, form.ReferenceType, form.ReferenceNumber, form.Remarks));
+            form = new();
+            await Load();
+            Show("Goods receipt posted.", false);
+        }
+        catch (InventoryApiException ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+
+    private void Show(string value, bool failed) { message = value; error = failed; }
+}

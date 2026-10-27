@@ -1,0 +1,33 @@
+<article class="identity-panel">
+    <header class="kitchen-card-header">
+        <div><span class="kicker">KOT @Ticket.Sequence</span><h2>@Ticket.TicketNumber</h2><small>Sales @Ticket.SalesOrderNumber · @Ticket.CreatedAt.ToLocalTime().ToString("g")</small></div>
+        <span class="identity-status @(Ticket.Status is KitchenTicketStatus.Ready ? "active" : Ticket.Status is KitchenTicketStatus.Cancelled ? "inactive" : "")">@Ticket.Status</span>
+    </header>
+    @foreach (var line in Ticket.Lines)
+    {
+        <div class="kitchen-line">
+            <div><strong>@line.Quantity.ToString("0.###") × @line.ItemName</strong>@if (!string.IsNullOrWhiteSpace(line.SpecialInstructions)){<small>@line.SpecialInstructions</small>}</div>
+            <span class="identity-status">@line.Status</span>
+            @if (CanPrepare && line.Status == KitchenLineStatus.Pending)
+            {
+                <button class="identity-secondary-button" @onclick="() => OnLineStatus.InvokeAsync((line, KitchenLineStatus.Preparing))">Start</button>
+            }
+            else if (CanPrepare && line.Status == KitchenLineStatus.Preparing)
+            {
+                <button class="identity-primary-button" @onclick="() => OnLineStatus.InvokeAsync((line, KitchenLineStatus.Ready))">Ready</button>
+            }
+        </div>
+    }
+    @if (CanCancel && Ticket.Status == KitchenTicketStatus.Queued)
+    {
+        <button class="identity-secondary-button" @onclick="() => OnCancel.InvokeAsync(Ticket)">Cancel KOT</button>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired] public KitchenTicketResponse Ticket { get; set; } = null!;
+    [Parameter] public bool CanPrepare { get; set; }
+    [Parameter] public bool CanCancel { get; set; }
+    [Parameter] public EventCallback<(KitchenTicketLineResponse Line, KitchenLineStatus Status)> OnLineStatus { get; set; }
+    [Parameter] public EventCallback<KitchenTicketResponse> OnCancel { get; set; }
+}

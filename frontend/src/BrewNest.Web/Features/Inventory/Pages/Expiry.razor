@@ -1,0 +1,8 @@
+@page "/inventory/expiry"
+@attribute [Authorize(Policy=InventoryPermissionNames.ExpiryRead)]
+@inject InventoryApiClient Api
+<PageTitle>Expiry alerts · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">INVENTORY</span><h1>Expiry alerts</h1><p>Thresholds are configurable. Expired stock is automatically blocked from reservation and issue.</p></section>
+@if(message is not null){<div class="identity-message error">@message</div>}
+<section class="identity-panel"><div class="identity-table-wrap"><table class="identity-table"><thead><tr><th>Severity</th><th>Item and lot</th><th>Expiry</th><th>Days</th><th>On-hand</th><th>Available</th><th>Blocked</th></tr></thead><tbody>@foreach(var x in alerts){<tr><td><span class="identity-status @(x.Severity=="Expired"||x.Severity=="Critical"?"inactive":"active")">@x.Severity</span></td><td>@ItemName(x.ItemId) - @x.LotNumber</td><td>@x.ExpiryDate.ToString("yyyy-MM-dd")</td><td>@x.DaysUntilExpiry</td><td>@x.OnHandQuantity.ToString("N3")</td><td>@x.AvailableQuantity.ToString("N3")</td><td>@(x.IsBlocked?"Yes":"No")</td></tr>}</tbody></table></div></section>
+@code { private ExpiryAlertResponse[] alerts=[]; private InventoryCatalogItemReference[] items=[]; private string? message; protected override async Task OnInitializedAsync(){try{var references=await Api.GetReferencesAsync();items=references.Items;alerts=await Api.GetExpiryAlertsAsync();}catch(InventoryApiException ex){message=ex.Message;}} private string ItemName(Guid id)=>items.FirstOrDefault(x=>x.Id==id)?.Name??"Inactive or unavailable item"; }

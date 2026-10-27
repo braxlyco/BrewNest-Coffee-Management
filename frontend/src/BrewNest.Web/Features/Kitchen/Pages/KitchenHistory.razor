@@ -1,0 +1,8 @@
+@page "/kitchen/history"
+@attribute [Authorize(Policy=KitchenPermissionNames.QueueRead)]
+@inject KitchenApiClient Api
+<PageTitle>Kitchen history · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">AUDIT TRAIL</span><h1>Kitchen status history</h1><p>Append-only KOT and preparation-line status changes.</p></section>
+@if(message is not null){<div class="identity-message error">@message</div>}
+<section class="identity-panel"><div class="identity-table-wrap"><table class="identity-table"><thead><tr><th>Changed</th><th>Ticket</th><th>Scope</th><th>Transition</th><th>Reason</th><th>Actor</th></tr></thead><tbody>@foreach(var item in history){<tr><td>@item.ChangedAt.ToLocalTime().ToString("g")</td><td>@item.TicketId</td><td>@(item.LineId is null ? "KOT" : "Line")</td><td>@item.PreviousStatus → @item.NewStatus</td><td>@item.Reason</td><td>@item.ChangedBy</td></tr>}</tbody></table></div></section>
+@code { private KitchenStatusHistoryResponse[] history=[];private string? message;protected override async Task OnInitializedAsync(){try{history=await Api.GetHistoryAsync();}catch(KitchenApiException ex){message=ex.Message;}} }

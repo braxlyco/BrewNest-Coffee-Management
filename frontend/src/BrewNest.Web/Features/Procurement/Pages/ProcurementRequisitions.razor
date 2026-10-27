@@ -1,0 +1,79 @@
+@page "/procurement/requisitions"
+@attribute [Authorize(Policy=ProcurementPermissionNames.Read)]
+@inject ProcurementApiClient Api
+@inject IdentitySessionState Session
+
+<PageTitle>Purchase requisitions · BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">PROCUREMENT</p><h1>Purchase requisitions</h1><p>Request materials, submit for approval, then create an RFQ.</p></section>
+@if (message is not null) { <div class="identity-message @(error ? "error" : "success")" role="alert">@message</div> }
+<div class="workspace-grid">
+    @if (CanManage)
+    {
+        <section class="panel"><h2>New requisition</h2><EditForm Model="form" OnValidSubmit="Create"><DataAnnotationsValidator/><FormValidationSummary />
+            <div class="form-grid"><label>Department<InputText @bind-Value="form.Department" maxlength="100"/></label><label>Required date<InputDate @bind-Value="form.RequiredOn"/></label>
+                <label>Item<InputSelect @bind-Value="form.ItemId"><option value="">Select active item</option>@foreach (var item in references?.Items ?? []) { <option value="@item.Id">@item.Code · @item.Name</option> }</InputSelect></label>
+                <label>Quantity<InputNumber @bind-Value="form.Quantity" min="0.001" step="0.001"/></label><label>Estimated unit price (PKR)<InputNumber @bind-Value="form.EstimatedUnitPrice" min="0" step="0.01"/></label><label>Reason<InputText @bind-Value="form.Reason" maxlength="500"/></label>
+            </div><button class="primary-button" disabled="@busy">@(busy ? "Creating…" : "Create draft")</button>
+        </EditForm></section>
+    }
+    <section class="panel"><h2>Requests</h2>
+        @foreach (var request in requisitions)
+        {
+            <article class="list-card"><strong>@request.Number</strong><span class="status-pill">@request.Status</span><p>@request.Department · PKR @request.EstimatedTotal.ToString("N2") · needed @request.RequiredOn</p>
+                @foreach (var line in request.Lines) { <small>@ItemName(line.ItemId) · @line.Quantity.ToString("N3")</small> }
+                @if (CanManage && request.Status == RequisitionStatus.Draft) { <button disabled="@busy" @onclick="() => Submit(request)">Submit</button> }
+                @if (CanApprove && request.Status == RequisitionStatus.Submitted) { <button disabled="@busy" @onclick="() => Approve(request)">Approve</button><button disabled="@busy" @onclick="() => Reject(request)">Reject</button> }
+            </article>
+        }
+        @if (requisitions.Length == 0) { <p>No requisitions yet.</p> }
+    </section>
+</div>
+
+@code {
+    private RequisitionForm form = new();
+    private ProcurementReferenceData? references;
+    private RequisitionResponse[] requisitions = [];
+    private string? message;
+    private bool error;
+    private bool busy;
+    private bool Has(string permission) => Session.CurrentUser?.Permissions.Contains(permission, StringComparer.Ordinal) == true;
+    private bool CanManage => Has(ProcurementPermissionNames.RequisitionsManage);
+    private bool CanApprove => Has(ProcurementPermissionNames.RequisitionsApprove);
+
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { references = await Api.References(); requisitions = await Api.Requisitions(); }
+        catch (Exception ex) { Show(ex.Message, true); }
+    }
+    private string ItemName(Guid id) => references?.Items.FirstOrDefault(x => x.Id == id)?.Name ?? "Unavailable item";
+    private async Task Create()
+    {
+        if (busy) return;
+        if (form.ItemId is null || !((references?.Items ?? []).Any(x => x.Id == form.ItemId))) { Show("Select an active Catalog item.", true); return; }
+        if (form.RequiredOn.Date < DateTime.Today) { Show("Required date cannot be in the past.", true); return; }
+        busy = true;
+        try
+        {
+            await Api.Create(new(form.Department, DateOnly.FromDateTime(form.RequiredOn), form.Reason,
+                [new(form.ItemId.Value, form.Quantity, form.EstimatedUnitPrice, string.Empty)]));
+            form = new();
+            await Load();
+            Show("Requisition draft created.", false);
+        }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private async Task Change(RequisitionResponse request, string action)
+    {
+        if (busy) return;
+        busy = true;
+        try { await Api.Change(request.Id, action, new($"{action} from Procurement workspace", request.Version)); await Load(); Show($"Requisition {action} completed.", false); }
+        catch (Exception ex) { Show(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private Task Submit(RequisitionResponse request) => Change(request, "submit");
+    private Task Approve(RequisitionResponse request) => Change(request, "approve");
+    private Task Reject(RequisitionResponse request) => Change(request, "reject");
+    private void Show(string value, bool failed) { message = value; error = failed; }
+}

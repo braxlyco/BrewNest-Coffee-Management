@@ -1,0 +1,25 @@
+@page "/kitchen/queue"
+@attribute [Authorize(Policy=KitchenPermissionNames.QueueRead)]
+@implements IAsyncDisposable
+@inject KitchenApiClient Api
+@inject KitchenQueueState Queue
+@inject BrewNestRealtimeClient Realtime
+@inject IdentitySessionState Session
+<PageTitle>Kitchen queue · BrewNest</PageTitle>
+<section class="identity-heading"><span class="kicker">REAL-TIME KOT</span><h1>Kitchen queue</h1><p>New and additional tickets refresh automatically when kitchen state changes.</p></section>
+@if(message is not null){<div class="identity-message @(error ? "error" : "success")">@message</div>}
+@if(CanGenerate){<section class="identity-panel"><h2>Prepare confirmed orders</h2><p>We check usable ingredient stock before sending items to the kitchen.</p><EditForm Model="form" OnValidSubmit="Generate"><DataAnnotationsValidator/><FormValidationSummary /><div class="identity-form-grid"><label>Order waiting for the kitchen<InputSelect class="form-control" @bind-Value="form.SalesOrderId"><option value="">Select confirmed order</option>@foreach(var order in confirmedOrders){<option value="@order.Id">@OrderLabel(order.OrderNumber) · @OrderTypeLabel(order.OrderType) · @order.ItemPreview</option>}</InputSelect></label></div><button class="identity-primary-button" disabled="@(busy || confirmedOrders.Length == 0)">@(busy ? "Preparing ticket…" : "Send items to kitchen")</button></EditForm>@if(confirmedOrders.Length == 0){<p>No confirmed orders have unsent items. Confirm a Sales order first.</p>}</section>}
+<div class="kitchen-board">@foreach(var ticket in Queue.Tickets){<KitchenTicketCard Ticket="ticket" CanPrepare="CanPrepare" CanCancel="CanCancel" OnLineStatus="ChangeLine" OnCancel="Cancel"/>}</div>
+@code {
+    private readonly GenerateTicketForm form = new(); private KitchenConfirmedOrderReference[] confirmedOrders = []; private string? message; private bool error; private bool busy; private IDisposable? subscription;
+    private bool CanGenerate => Has(KitchenPermissionNames.TicketsGenerate); private bool CanPrepare => Has(KitchenPermissionNames.PreparationManage); private bool CanCancel => Has(KitchenPermissionNames.TicketsCancel); private bool Has(string permission) => Session.CurrentUser?.Permissions.Contains(permission, StringComparer.Ordinal) == true;
+    private static string OrderLabel(string number) => number.Length > 24 ? number[..24].ToUpperInvariant() : number;
+    private static string OrderTypeLabel(string value) => value switch { "DineIn" => "Dine-in", "Takeaway" => "Takeaway", "Delivery" => "Delivery", _ => value };
+    protected override async Task OnInitializedAsync(){subscription=Realtime.On<KitchenQueueNotification>("KitchenQueueChanged",_=>InvokeAsync(Load));try{await Realtime.StartAsync();}catch(HttpRequestException){Show("Live updates are temporarily unavailable; manual operations still work.",true);}await Load();}
+    private async Task Load(){try{Queue.Replace(await Api.GetQueueAsync());if(CanGenerate)confirmedOrders=await Api.GetConfirmedOrdersAsync();StateHasChanged();}catch(KitchenApiException ex){Show(ex.Message,true);}}
+    private async Task Generate(){if(!Guid.TryParse(form.SalesOrderId,out var id)||!confirmedOrders.Any(x=>x.Id==id)){Show("Select a confirmed Sales order with pending items.",true);return;}busy=true;try{await Api.GenerateAsync(id);form.SalesOrderId=string.Empty;Show("KOT generated and ingredients reserved.",false);await Load();}catch(KitchenApiException ex){Show(ex.Message,true);}finally{busy=false;}}
+    private async Task ChangeLine((KitchenTicketLineResponse Line,KitchenLineStatus Status) change){var ticket=Queue.Tickets.Single(x=>x.Lines.Any(y=>y.Id==change.Line.Id));try{await Api.ChangeLineStatusAsync(ticket.Id,change.Line.Id,new(change.Status,change.Status==KitchenLineStatus.Preparing?"Preparation started.":"Item is ready.",ticket.Version,change.Line.Version));await Load();}catch(KitchenApiException ex){Show(ex.Message,true);}}
+    private async Task Cancel(KitchenTicketResponse ticket){try{await Api.CancelAsync(ticket.Id,"Cancelled before preparation.",ticket.Version);Show("KOT cancelled and remaining reservations released.",false);await Load();}catch(KitchenApiException ex){Show(ex.Message,true);}}
+    private void Show(string value,bool failed){message=value;error=failed;StateHasChanged();}
+    public ValueTask DisposeAsync(){subscription?.Dispose();return ValueTask.CompletedTask;}
+}

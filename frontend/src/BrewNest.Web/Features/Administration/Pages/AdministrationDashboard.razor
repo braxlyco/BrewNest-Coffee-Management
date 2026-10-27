@@ -1,0 +1,13 @@
+@page "/administration"
+@attribute [Authorize]
+@inject IdentitySessionState Session
+
+<PageTitle>Administration · BrewNest</PageTitle>
+<section class="identity-heading"><div><span class="kicker">CONFIGURATION</span><h1>Administration</h1><p>Controlled operational settings with approvals, concurrency protection, and audit history.</p></div></section>
+<div class="identity-grid">
+    @if (Has(AdministrationPermissionNames.SettingsRead)) { <a class="identity-action-card" href="administration/settings"><strong>Operational settings</strong><span>Company, branches, expiry alerts, fiscal years and numbering</span></a> }
+    @if (Has(AdministrationPermissionNames.ApprovalsRead)) { <a class="identity-action-card" href="administration/approvals"><strong>Approval rules</strong><span>Role routes and configurable purchase-order tiers</span></a> }
+    @if (Has(AdministrationPermissionNames.AuditRead)) { <a class="identity-action-card" href="administration/audit"><strong>Audit history</strong><span>Append-only configuration change history</span></a> }
+</div>
+
+@code { private bool Has(string permission) => Session.CurrentUser?.Permissions.Contains(permission, StringComparer.Ordinal) == true; }

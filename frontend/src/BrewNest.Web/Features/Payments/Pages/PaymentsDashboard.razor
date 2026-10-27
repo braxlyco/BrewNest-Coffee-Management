@@ -1,0 +1,5 @@
+@page "/payments"
+@attribute [Authorize(Policy = PaymentsPermissionNames.Read)]
+<PageTitle>Payments | BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">PAYMENT CONTROL</p><h1>Payments &amp; refunds</h1><p>Record, verify, settle, and refund café payments through controlled adapters.</p></section>
+<div class="feature-grid"><a class="feature-card" href="payments/transactions"><h3>Transactions</h3><p>Cash, COD, bank transfer, Easypaisa, and JazzCash.</p></a><a class="feature-card" href="payments/refunds"><h3>Refunds</h3><p>Process approved refund requests with full history.</p></a></div>

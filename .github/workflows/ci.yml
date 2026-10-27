@@ -1,0 +1,17 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore BrewNest.sln
+      - run: dotnet build BrewNest.sln --no-restore
+      - run: dotnet test BrewNest.sln --no-build --no-restore

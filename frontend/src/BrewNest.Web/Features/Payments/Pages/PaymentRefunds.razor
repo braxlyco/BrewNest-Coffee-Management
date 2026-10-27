@@ -1,0 +1,50 @@
+@page "/payments/refunds"
+@attribute [Authorize(Policy = PaymentsPermissionNames.RefundsRead)]
+@inject PaymentsApiClient Api
+@inject IdentitySessionState Session
+
+<PageTitle>Refunds | BrewNest</PageTitle>
+<section class="page-heading"><p class="eyebrow">REFUNDS</p><h1>Refund requests</h1><p>Process approved Returns and void requests. Wallet refunds use the sandbox when one original wallet payment is identifiable.</p></section>
+@if (message is not null) { <div class="alert" role="status">@message</div> }
+<section class="panel">
+    @if (values.Length == 0) { <p>No refund requests yet.</p> }
+    @foreach (var refund in values)
+    {
+        <article class="list-card">
+            <strong>@refund.RefundNumber</strong><span class="status-pill">@refund.Status</span>
+            <p>@refund.SourceReference · PKR @refund.Amount.ToString("N2")</p>
+            <p>@refund.Reason</p>
+            @if (CanProcess && refund.Status == RefundStatus.Requested)
+            {
+                <button type="button" disabled="@busy" @onclick="() => Process(refund, true)">Process</button>
+                <button type="button" disabled="@busy" @onclick="() => Process(refund, false)">Reject</button>
+            }
+            @if (refund.GatewayReference is not null) { <small>Simulator reference: @refund.GatewayReference</small> }
+        </article>
+    }
+</section>
+@code {
+    private RefundResponse[] values = [];
+    private string? message;
+    private bool busy;
+    private bool CanProcess => Session.CurrentUser?.Permissions.Contains(PaymentsPermissionNames.RefundsProcess, StringComparer.Ordinal) == true;
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        try { values = await Api.Refunds(); }
+        catch (Exception exception) { message = exception.Message; }
+    }
+    private async Task Process(RefundResponse refund, bool approve)
+    {
+        if (busy) return;
+        busy = true;
+        try
+        {
+            await Api.Process(refund.Id, new(approve, approve ? "Refund executed in sandbox" : "Refund rejected", refund.Version));
+            await Load();
+            message = approve ? "Refund processed in sandbox." : "Refund rejected.";
+        }
+        catch (Exception exception) { message = exception.Message; }
+        finally { busy = false; }
+    }
+}

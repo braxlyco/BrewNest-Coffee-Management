@@ -1,0 +1,36 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject IdentitySessionState Session
+@inject NavigationManager Navigation
+
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation"><NavMenu /></aside>
+    <main class="main-area" id="main-content" tabindex="-1">
+        <header class="topbar"><div class="breadcrumb"><a href="">BrewNest</a><span aria-hidden="true">/</span><strong>@WorkspaceName</strong></div><div class="topbar-actions"><span class="workspace-tag"><span></span> Café workspace</span><AuthorizeView><Authorized Context="authentication"><div class="identity-summary"><a class="profile-link" href="identity/profile"><span class="avatar">@Initial(authentication.User.Identity?.Name)</span><span>@authentication.User.Identity?.Name</span></a><button disabled="@signingOut" type="button" @onclick="SignOutAsync">@(signingOut ? "Signing out…" : "Sign out")</button></div></Authorized><NotAuthorized><a class="sign-in-link" href="identity/login">Sign in <span aria-hidden="true">↗</span></a></NotAuthorized></AuthorizeView></div></header>
+        <article class="content">
+            @if (sessionError is not null) { <div class="identity-message error" role="alert">@sessionError</div> }
+            <ErrorBoundary @ref="boundary"><ChildContent>@Body</ChildContent><ErrorContent><section class="empty-state" role="alert"><h1>This screen couldn’t load.</h1><p>Please retry. If this keeps happening, check that the café server is running.</p><button @onclick="Recover">Try again</button><a class="back-link" href="">Back to overview</a></section></ErrorContent></ErrorBoundary>
+        </article>
+    </main>
+</div>
+
+@code {
+    private ErrorBoundary? boundary;
+    private bool signingOut;
+    private string? sessionError;
+    private string WorkspaceName => WorkspaceDirectory.All.FirstOrDefault(x => Navigation.ToBaseRelativePath(Navigation.Uri).Split('/')[0] == x.Slug)?.Name ?? "Overview";
+    private static string Initial(string? name) => string.IsNullOrWhiteSpace(name) ? "B" : name[..1].ToUpperInvariant();
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args) { boundary?.Recover(); sessionError = null; _ = InvokeAsync(StateHasChanged); }
+    private void Recover() => boundary?.Recover();
+    private async Task SignOutAsync()
+    {
+        if (signingOut) return;
+        signingOut = true;
+        try { await Session.LogoutAsync(); Navigation.NavigateTo("identity/login"); }
+        catch (Exception) { sessionError = "We couldn’t complete sign out. Please retry."; }
+        finally { signingOut = false; }
+    }
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}

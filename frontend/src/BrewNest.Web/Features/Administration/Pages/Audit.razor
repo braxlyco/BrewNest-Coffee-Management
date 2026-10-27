@@ -1,0 +1,7 @@
+@page "/administration/audit"
+@attribute [Authorize(Policy = AdministrationPermissionNames.AuditRead)]
+@inject AdministrationApiClient ApiClient
+<PageTitle>Administration audit · BrewNest</PageTitle>
+<section class="identity-heading"><div><span class="kicker">TRACEABILITY</span><h1>Configuration audit</h1><p>Append-only history of Administration changes.</p></div></section>
+<section class="identity-panel"><h2>Recent activity</h2>@if (items.Length==0){<p>No configuration changes have been recorded yet.</p>}@foreach(var item in items){<div class="identity-role-row"><span><strong>@item.Action @item.EntityType</strong><small>@item.OccurredAt.ToLocalTime().ToString("g") · @item.Actor</small></span><span>@item.EntityId</span></div>}</section>
+@code { private AdministrationAuditResponse[] items=[]; protected override async Task OnInitializedAsync()=>items=await ApiClient.GetAuditAsync(); }
